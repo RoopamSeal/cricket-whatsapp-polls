@@ -4,58 +4,55 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 
-# ==================================================
+# ----------------------------------
 
 # CONFIG
 
-# ==================================================
+# ----------------------------------
 
 st.set_page_config(
-page_title="FIFA World Cup 2026 Poll",
+page_title="FIFA 2026 Poll",
 page_icon="⚽",
 layout="wide"
 )
 
-FIXTURE_PATH = "data/FIFA2026_schedule_fixtures.csv"
-VOTES_PATH = "data/votes.csv"
+DATA_DIR = Path("data")
+FIXTURE_FILE = DATA_DIR / "FIFA2026_schedule_fixtures.csv"
+VOTES_FILE = DATA_DIR / "votes.csv"
 
-# ==================================================
+# ----------------------------------
 
-# CREATE DATA DIRECTORY
+# CREATE DATA STORAGE
 
-# ==================================================
+# ----------------------------------
 
-Path("data").mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True)
 
-if not Path(VOTES_PATH).exists():
-empty_votes = pd.DataFrame(
+if not VOTES_FILE.exists():
+pd.DataFrame(
 columns=[
 "vote_id",
 "match_number",
 "username",
 "prediction",
-"timestamp",
+"timestamp"
 ]
+).to_csv(
+VOTES_FILE,
+index=False
 )
 
-```
-empty_votes.to_csv(
-    VOTES_PATH,
-    index=False
-)
-```
+# ----------------------------------
 
-# ==================================================
+# HELPERS
 
-# LOAD DATA
-
-# ==================================================
+# ----------------------------------
 
 @st.cache_data
 def load_fixtures():
 
 ```
-df = pd.read_csv(FIXTURE_PATH)
+df = pd.read_csv(FIXTURE_FILE)
 
 df["date_dt"] = pd.to_datetime(
     df["date_dt"],
@@ -69,113 +66,88 @@ return df
 def load_votes():
 
 ```
-return pd.read_csv(VOTES_PATH)
+if VOTES_FILE.exists():
+    return pd.read_csv(VOTES_FILE)
+
+return pd.DataFrame()
 ```
 
-def store_vote(vote):
+def save_vote(record):
 
 ```
-existing = load_votes()
+votes = load_votes()
 
-updated = pd.concat(
+votes = pd.concat(
     [
-        existing,
-        pd.DataFrame([vote])
+        votes,
+        pd.DataFrame([record])
     ],
     ignore_index=True
 )
 
-updated.to_csv(
-    VOTES_PATH,
+votes.to_csv(
+    VOTES_FILE,
     index=False
 )
 ```
 
-# ==================================================
+# ----------------------------------
 
-# APP HEADER
+# UI
 
-# ==================================================
+# ----------------------------------
 
-st.title("🏆 FIFA World Cup 2026 Match Poll")
+st.title("🏆 FIFA World Cup 2026 Daily Poll")
 
 username = st.text_input(
-"Enter your username"
+"Username"
 )
 
-if username == "":
+if not username:
 st.stop()
-
-# ==================================================
-
-# DATE FILTER
-
-# ==================================================
 
 fixtures = load_fixtures()
 
-today = pd.Timestamp.now().normalize()
+today = pd.Timestamp.today().normalize()
 
-matches = fixtures[
+today_matches = fixtures[
 fixtures["date_dt"].dt.normalize()
 == today
 ]
 
-# ==================================================
+# ----------------------------------
 
 # NO MATCH
 
-# ==================================================
+# ----------------------------------
 
-if matches.empty:
+if len(today_matches) == 0:
 
 ```
 st.info(
-    "No FIFA World Cup match today."
-)
-
-upcoming = (
-    fixtures[
-        fixtures["date_dt"]
-        > today
-    ]
-    .sort_values("date_dt")
-    .head(10)
-)
-
-st.subheader(
-    "Upcoming Fixtures"
-)
-
-st.dataframe(
-    upcoming
+    "No match scheduled today."
 )
 
 st.stop()
 ```
 
-# ==================================================
+# ----------------------------------
 
-# ACTIVE MATCHES
+# SHOW POLLS
 
-# ==================================================
+# ----------------------------------
 
 votes = load_votes()
 
-for _, match in matches.iterrows():
+for _, match in today_matches.iterrows():
 
 ```
 match_id = str(
     match["match_number"]
 )
 
-team1 = str(
-    match["team 1"]
-)
-
-team2 = str(
-    match["team 2"]
-)
+team1 = match["team 1"]
+team2 = match["team 2"]
 
 st.divider()
 
@@ -184,10 +156,10 @@ st.subheader(
 )
 
 st.write(
-    f"🏟 {match['stadium']}"
+    f"🏟️ {match['stadium']}"
 )
 
-previous = votes[
+already = votes[
     (
         votes["username"]
         == username
@@ -201,10 +173,10 @@ previous = votes[
     )
 ]
 
-if previous.empty:
+if len(already) == 0:
 
-    prediction = st.radio(
-        "Who will win?",
+    choice = st.radio(
+        "Choose winner",
         [
             team1,
             team2,
@@ -213,19 +185,15 @@ if previous.empty:
         key=match_id
     )
 
-    submit = st.button(
+    if st.button(
         "Submit Vote",
-        key=f"btn_{match_id}"
-    )
+        key=f"submit_{match_id}"
+    ):
 
-    if submit:
-
-        new_vote = {
+        save_vote({
 
             "vote_id":
-            str(
-                uuid.uuid4()
-            ),
+            str(uuid.uuid4()),
 
             "match_number":
             match_id,
@@ -234,18 +202,14 @@ if previous.empty:
             username,
 
             "prediction":
-            prediction,
+            choice,
 
             "timestamp":
-            datetime.utcnow()
-        }
-
-        store_vote(
-            new_vote
-        )
+            datetime.now()
+        })
 
         st.success(
-            "Vote stored."
+            "Vote submitted"
         )
 
         st.rerun()
@@ -253,10 +217,8 @@ if previous.empty:
 else:
 
     st.warning(
-        "You already voted."
+        "Already voted"
     )
-
-# RESULTS
 
 results = load_votes()
 
@@ -267,64 +229,20 @@ results = results[
     == match_id
 ]
 
-if not results.empty:
-
-    st.subheader(
-        "Live Results"
-    )
+if len(results):
 
     summary = (
         results[
             "prediction"
         ]
         .value_counts()
-        .reset_index()
-    )
-
-    summary.columns = [
-        "Selection",
-        "Votes"
-    ]
-
-    st.dataframe(
-        summary,
-        use_container_width=True
     )
 
     st.bar_chart(
-        summary.set_index(
-            "Selection"
-        )
+        summary
     )
-```
 
-# ==================================================
-
-# HISTORY
-
-# ==================================================
-
-st.divider()
-
-st.subheader(
-"Recent Votes"
-)
-
-history = load_votes()
-
-if history.empty:
-
-```
-st.info(
-    "No votes recorded."
-)
-```
-
-else:
-
-```
-st.dataframe(
-    history.tail(20),
-    use_container_width=True
-)
+    st.dataframe(
+        summary
+    )
 ```
