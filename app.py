@@ -4,11 +4,11 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 
-# =====================================================
+# ==================================================
 
 # CONFIG
 
-# =====================================================
+# ==================================================
 
 st.set_page_config(
 page_title="FIFA World Cup 2026 Poll",
@@ -17,224 +17,235 @@ layout="wide"
 )
 
 FIXTURE_PATH = "data/FIFA2026_schedule_fixtures.csv"
-VOTE_PATH = "data/votes.csv"
+VOTES_PATH = "data/votes.csv"
 
-# =====================================================
+# ==================================================
 
-# INITIALIZE
+# CREATE DATA DIRECTORY
 
-# =====================================================
+# ==================================================
 
 Path("data").mkdir(exist_ok=True)
 
-if not Path(VOTE_PATH).exists():
-pd.DataFrame(
+if not Path(VOTES_PATH).exists():
+empty_votes = pd.DataFrame(
 columns=[
 "vote_id",
 "match_number",
-"date",
-"team",
 "username",
+"prediction",
 "timestamp",
 ]
-).to_csv(VOTE_PATH, index=False)
-
-# =====================================================
-
-# LOAD FUNCTIONS
-
-# =====================================================
-
-@st.cache_data
-def load_fixture():
-df = pd.read_csv(FIXTURE_PATH)
+)
 
 ```
+empty_votes.to_csv(
+    VOTES_PATH,
+    index=False
+)
+```
+
+# ==================================================
+
+# LOAD DATA
+
+# ==================================================
+
+@st.cache_data
+def load_fixtures():
+
+```
+df = pd.read_csv(FIXTURE_PATH)
+
 df["date_dt"] = pd.to_datetime(
     df["date_dt"],
     format="%d-%m-%Y",
-    errors="coerce",
+    errors="coerce"
 )
 
 return df
 ```
 
 def load_votes():
-return pd.read_csv(VOTE_PATH)
-
-def save_vote(vote):
 
 ```
-votes = load_votes()
+return pd.read_csv(VOTES_PATH)
+```
 
-votes = pd.concat(
-    [votes, pd.DataFrame([vote])],
+def store_vote(vote):
+
+```
+existing = load_votes()
+
+updated = pd.concat(
+    [
+        existing,
+        pd.DataFrame([vote])
+    ],
     ignore_index=True
 )
 
-votes.to_csv(
-    VOTE_PATH,
+updated.to_csv(
+    VOTES_PATH,
     index=False
 )
-
-st.cache_data.clear()
 ```
 
-# =====================================================
+# ==================================================
 
-# LOAD DATA
+# APP HEADER
 
-# =====================================================
-
-fixture = load_fixture()
-
-today = pd.Timestamp.now().normalize()
-
-today_matches = fixture[
-fixture["date_dt"].dt.normalize()
-== today
-]
-
-# =====================================================
-
-# UI
-
-# =====================================================
+# ==================================================
 
 st.title("🏆 FIFA World Cup 2026 Match Poll")
 
 username = st.text_input(
-"Enter username"
+"Enter your username"
 )
 
-if not username:
-st.info("Enter a username to vote.")
+if username == "":
 st.stop()
 
-# =====================================================
+# ==================================================
 
-# NO MATCH TODAY
+# DATE FILTER
 
-# =====================================================
+# ==================================================
 
-if today_matches.empty:
+fixtures = load_fixtures()
+
+today = pd.Timestamp.now().normalize()
+
+matches = fixtures[
+fixtures["date_dt"].dt.normalize()
+== today
+]
+
+# ==================================================
+
+# NO MATCH
+
+# ==================================================
+
+if matches.empty:
 
 ```
-st.success("No FIFA World Cup match scheduled today.")
+st.info(
+    "No FIFA World Cup match today."
+)
 
 upcoming = (
-    fixture[
-        fixture["date_dt"] > today
+    fixtures[
+        fixtures["date_dt"]
+        > today
     ]
     .sort_values("date_dt")
     .head(10)
 )
 
-st.subheader("Upcoming Matches")
+st.subheader(
+    "Upcoming Fixtures"
+)
 
 st.dataframe(
-    upcoming[
-        [
-            "date_dt",
-            "team 1",
-            "team 2",
-            "stadium",
-        ]
-    ]
+    upcoming
 )
 
 st.stop()
 ```
 
-# =====================================================
+# ==================================================
 
-# MATCH POLLS
+# ACTIVE MATCHES
 
-# =====================================================
+# ==================================================
 
 votes = load_votes()
 
-for _, match in today_matches.iterrows():
+for _, match in matches.iterrows():
 
 ```
+match_id = str(
+    match["match_number"]
+)
+
+team1 = str(
+    match["team 1"]
+)
+
+team2 = str(
+    match["team 2"]
+)
+
 st.divider()
-
-match_id = str(match["match_number"])
-
-team1 = match["team 1"]
-team2 = match["team 2"]
 
 st.subheader(
     f"{team1} vs {team2}"
 )
 
-col1, col2, col3 = st.columns(3)
-
-col1.metric(
-    "Group",
-    match["group"]
+st.write(
+    f"🏟 {match['stadium']}"
 )
 
-col2.metric(
-    "Stadium",
-    match["stadium"]
-)
-
-col3.metric(
-    "Match",
-    match_id
-)
-
-already = votes[
-    (votes["username"] == username)
+previous = votes[
+    (
+        votes["username"]
+        == username
+    )
     &
     (
-        votes["match_number"]
-        .astype(str)
+        votes[
+            "match_number"
+        ].astype(str)
         == match_id
     )
 ]
 
-if already.empty:
+if previous.empty:
 
-    selection = st.radio(
-        "Vote:",
+    prediction = st.radio(
+        "Who will win?",
         [
             team1,
             team2,
             "Draw"
         ],
-        key=f"vote_{match_id}"
+        key=match_id
     )
 
-    if st.button(
+    submit = st.button(
         "Submit Vote",
-        key=f"submit_{match_id}"
-    ):
+        key=f"btn_{match_id}"
+    )
 
-        save_vote({
+    if submit:
+
+        new_vote = {
 
             "vote_id":
-            str(uuid.uuid4()),
+            str(
+                uuid.uuid4()
+            ),
 
             "match_number":
             match_id,
 
-            "date":
-            str(today.date()),
-
-            "team":
-            selection,
-
             "username":
             username,
 
+            "prediction":
+            prediction,
+
             "timestamp":
             datetime.utcnow()
-        })
+        }
+
+        store_vote(
+            new_vote
+        )
 
         st.success(
-            "Vote recorded."
+            "Vote stored."
         )
 
         st.rerun()
@@ -247,56 +258,51 @@ else:
 
 # RESULTS
 
-current = load_votes()
+results = load_votes()
 
-current = current[
-    current["match_number"]
-    .astype(str)
+results = results[
+    results[
+        "match_number"
+    ].astype(str)
     == match_id
 ]
 
-if len(current):
+if not results.empty:
 
     st.subheader(
         "Live Results"
     )
 
-    results = (
-        current["team"]
+    summary = (
+        results[
+            "prediction"
+        ]
         .value_counts()
         .reset_index()
     )
 
-    results.columns = [
+    summary.columns = [
         "Selection",
         "Votes"
     ]
 
-    total = results["Votes"].sum()
-
-    results["Percent"] = (
-        results["Votes"]
-        / total
-        * 100
-    ).round(2)
-
     st.dataframe(
-        results,
+        summary,
         use_container_width=True
     )
 
     st.bar_chart(
-        results.set_index(
+        summary.set_index(
             "Selection"
-        )["Votes"]
+        )
     )
 ```
 
-# =====================================================
+# ==================================================
 
 # HISTORY
 
-# =====================================================
+# ==================================================
 
 st.divider()
 
@@ -306,19 +312,19 @@ st.subheader(
 
 history = load_votes()
 
-if len(history):
+if history.empty:
 
 ```
-st.dataframe(
-    history.tail(50),
-    use_container_width=True
+st.info(
+    "No votes recorded."
 )
 ```
 
 else:
 
 ```
-st.info(
-    "No votes yet."
+st.dataframe(
+    history.tail(20),
+    use_container_width=True
 )
 ```
