@@ -16,7 +16,7 @@ st.set_page_config(
 # ==========================================
 # 2. DATA MANAGEMENT
 # ==========================================
-FIXTURE_FILE = "FIFA2026_schedule_fixtures.csv" # Ensure this is in the same directory
+FIXTURE_FILE = "data/FIFA2026_schedule_fixtures.csv" # Ensure this is in the same directory
 VOTES_FILE = "votes.csv"
 
 # Initialize votes.csv with the requested columns if it doesn't exist
