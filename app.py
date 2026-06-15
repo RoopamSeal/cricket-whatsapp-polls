@@ -51,17 +51,17 @@ if not VOTES_FILE.exists():
 @st.cache_data
 def load_fixtures():
 
-```
-df = pd.read_csv(FIXTURE_FILE)
-
-df["date_dt"] = pd.to_datetime(
-    df["date_dt"],
-    format="%d-%m-%Y",
-    errors="coerce"
-)
-
-return df
-```
+    ```
+    df = pd.read_csv(FIXTURE_FILE)
+    
+    df["date_dt"] = pd.to_datetime(
+        df["date_dt"],
+        format="%d-%m-%Y",
+        errors="coerce"
+    )
+    
+    return df
+    ```
 
 def load_votes():
 
