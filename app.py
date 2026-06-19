@@ -486,9 +486,9 @@ else:
                 active_matches = active_matches.sort_values('match_datetime')
                 
                 for idx, (_, match) in enumerate(active_matches.head(10).iterrows()):
-                    match_datetime = pd.to_datetime(
-                        f"{match['match_date']} {match['kickoff_time']}"
-                    )
+                    # Parse US time and convert to IST (+9 hours 30 mins)
+                    match_datetime_us = pd.to_datetime(f"{match['match_date']} {match['kickoff_time']}")
+                    match_datetime_ist = match_datetime_us + pd.Timedelta(hours=9, minutes=30)
                     
                     st.markdown(f"""
                     <div class="match-card">
@@ -511,8 +511,8 @@ else:
                             </div>
                             <div style="text-align: center;">
                                 <p style="color: #666; margin: 0; font-size: 0.9rem;">
-                                    📅 {match_datetime.strftime('%b %d')}<br>
-                                    🕐 {match_datetime.strftime('%H:%M')}<br>
+                                    📅 {match_datetime_ist.strftime('%b %d')}<br>
+                                    🕐 {match_datetime_ist.strftime('%H:%M')} IST<br>
                                     📍 {match['venue']}
                                 </p>
                             </div>
