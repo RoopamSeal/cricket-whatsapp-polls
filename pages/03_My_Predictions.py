@@ -106,7 +106,11 @@ try:
     
     for _, pred in predictions_df.iterrows():
         result = storage.get_match_result(pred['match_id'])
-        match_datetime = pd.to_datetime(f"{pred['match_date']} {pred['kickoff_time']}")
+        
+        # --- IST TIMING CONVERSION ---
+        match_datetime_us = pd.to_datetime(f"{pred['match_date']} {pred['kickoff_time']}")
+        match_datetime_ist = match_datetime_us + pd.Timedelta(hours=9, minutes=30)
+        # -----------------------------
         
         if result:
             is_correct = result['actual_winner'] == pred['predicted_winner']
@@ -169,7 +173,7 @@ try:
             </div>
             <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(0,0,0,0.1);">
                 <small style="color: #999;">
-                    📅 {match_datetime.strftime('%B %d, %Y')} at {match_datetime.strftime('%H:%M')} • 
+                    📅 {match_datetime_ist.strftime('%B %d, %Y')} at {match_datetime_ist.strftime('%H:%M')} IST • 
                     <span style="background: #e53238; color: white; padding: 0.2rem 0.4rem; border-radius: 0.2rem; font-size: 0.75rem; font-weight: 600;">
                         {pred['stage']}
                     </span>
