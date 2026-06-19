@@ -90,7 +90,7 @@ st.markdown("""
        ---------------------------------------------------- */
     .banner-header {
         /* Add your copied image URL below inside the url('') */
-        background: linear-gradient(rgba(26, 71, 42, 0.85), rgba(26, 71, 42, 0.95)), 
+        background: linear-gradient(rgba(26, 71, 42, 0.2), rgba(26, 71, 42, 0.3)), 
                     url('https://s.yimg.com/ny/api/res/1.2/2DOPtSxLvgCKhWuhEIUNTQ--/YXBwaWQ9aGlnaGxhbmRlcjt3PTk2MDtoPTU0MDtjZj13ZWJw/https://media.zenfs.com/en/wdaf_articles_412/6e591ad86accfc2fa04d6bff48ecf693') center/cover no-repeat;
         padding: 4rem 2rem;
         border-radius: 1rem;
