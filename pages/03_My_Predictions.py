@@ -1,52 +1,38 @@
 """
-My Predictions page - View prediction history with timeline style
+My Predictions page - View prediction history with FIFA 2026 design
 """
 import streamlit as st
 import pandas as pd
 from src.config import Config
 from src.storage import Storage
-from src.ui import inject_global_css, timeline_prediction, progress_bar
 
 # Initialize
 config = Config()
 storage = Storage(config)
 storage.initialize_data_layer()
 
-inject_global_css()
 st.set_page_config(page_title="My Predictions - World Cup 2026", layout="wide")
 
-# Check authentication
-if st.session_state.user_id is None:
-    st.info("Please log in from the main page")
-    st.stop()
-
 st.markdown("""
-<div style="text-align: center; margin-bottom: 2rem;">
-    <div style="
-        font-family: 'Montserrat', sans-serif;
-        font-size: 3rem;
-        font-weight: 900;
-        background: linear-gradient(135deg, #0057B8 0%, #00C896 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        margin-bottom: 0.5rem;
-    ">📊 Your Predictions</div>
-    <div style="
-        font-size: 1.1rem;
-        color: rgba(255, 255, 255, 0.7);
-    ">Timeline of your predictions and results.</div>
-</div>
+<h1 style="text-align: center;">📊 MY PREDICTIONS</h1>
+<p style="text-align: center; color: #e53238; font-size: 1rem;">
+    Track your prediction history and performance metrics
+</p>
 """, unsafe_allow_html=True)
 
 st.markdown("---")
+
+# Check authentication
+if st.session_state.user_id is None:
+    st.info("👈 Please log in from the Home page to view your predictions")
+    st.stop()
 
 try:
     # Get user's predictions
     predictions = storage.get_user_predictions(st.session_state.user_id)
     
     if not predictions:
-        st.info("You haven't made any predictions yet. Go to the Predict page to get started!")
+        st.info("🎯 You haven't made any predictions yet. Go to the Predict page to get started!")
         st.stop()
     
     predictions_df = pd.DataFrame(predictions)
@@ -62,98 +48,135 @@ try:
     )
     
     # Sort by date descending
-    predictions_df['match_datetime'] = pd.to_datetime(
-        predictions_df['match_date'] + ' ' + predictions_df['kickoff_time']
-    )
-    predictions_df = predictions_df.sort_values('match_datetime', ascending=False)
+    predictions_df = predictions_df.sort_values('prediction_timestamp', ascending=False)
     
-    # Stats
-    st.markdown('<h2>📈 Your Statistics</h2>', unsafe_allow_html=True)
+    # Display stats
+    st.markdown("<h2 style='color: #1a472a; border-bottom: 3px solid #ffb81c;'>📈 Your Performance</h2>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
-    total_predictions = len(predictions_df)
+    total_preds = len(predictions_df)
     
+    # Count correct predictions
     correct = 0
     for _, pred in predictions_df.iterrows():
         result = storage.get_match_result(pred['match_id'])
         if result and result['actual_winner'] == pred['predicted_winner']:
             correct += 1
     
-    accuracy = (correct / total_predictions * 100) if total_predictions > 0 else 0
+    accuracy = (correct / total_preds * 100) if total_preds > 0 else 0
     points = storage.get_user_total_points(st.session_state.user_id)
     
     with col1:
-        st.metric("Total Predictions", total_predictions, label_visibility="collapsed")
+        st.markdown(f"""
+        <div class="metric-card">
+            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">🎯 Total</p>
+            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{total_preds}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col2:
-        st.metric("Correct", correct, label_visibility="collapsed")
+        st.markdown(f"""
+        <div class="metric-card">
+            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">✅ Correct</p>
+            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{correct}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col3:
-        st.metric("Accuracy", f"{accuracy:.1f}%", label_visibility="collapsed")
+        st.markdown(f"""
+        <div class="metric-card">
+            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">📊 Accuracy</p>
+            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{accuracy:.1f}%</h3>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col4:
-        st.metric("Points", points, label_visibility="collapsed")
+        st.markdown(f"""
+        <div class="metric-card">
+            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">⭐ Points</p>
+            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{points}</h3>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Progress bar
-    st.markdown('<h3>Accuracy Progress</h3>', unsafe_allow_html=True)
-    progress_bar(correct, total_predictions, f"You got {correct} out of {total_predictions} correct")
-    
-    st.markdown("---")
-    
-    # Timeline
-    st.markdown('<h2>⏱️ Prediction Timeline</h2>', unsafe_allow_html=True)
+    # Display predictions
+    st.markdown("<h2 style='color: #1a472a; border-bottom: 3px solid #ffb81c;'>📋 Prediction History</h2>", unsafe_allow_html=True)
     
     for _, pred in predictions_df.iterrows():
         result = storage.get_match_result(pred['match_id'])
         match_datetime = pd.to_datetime(f"{pred['match_date']} {pred['kickoff_time']}")
         
-        points_earned = 0
         if result:
-            if result['actual_winner'] == pred['predicted_winner']:
-                if pred['predicted_winner'] == 'draw':
-                    points_earned = config.POINTS_CORRECT_DRAW
-                else:
-                    points_earned = config.POINTS_CORRECT_WINNER
+            is_correct = result['actual_winner'] == pred['predicted_winner']
+            if is_correct:
+                status_icon = "✅"
+                status_text = "CORRECT"
+                status_color = "#4caf50"
+                bg_color = "#e8f5e9"
+            else:
+                status_icon = "❌"
+                status_text = "INCORRECT"
+                status_color = "#e53238"
+                bg_color = "#ffebee"
+            
+            actual = result['actual_winner']
+            points_earned = 3 if (is_correct and actual != 'draw') else 2 if (is_correct and actual == 'draw') else 0
+        else:
+            status_icon = "⏳"
+            status_text = "PENDING"
+            status_color = "#2196f3"
+            bg_color = "#e3f2fd"
+            actual = "-"
+            points_earned = 0
         
-        timeline_prediction(
-            team_1=pred['team_1'],
-            team_2=pred['team_2'],
-            prediction=pred['predicted_winner'],
-            result=result['actual_winner'] if result else None,
-            points=points_earned if points_earned > 0 else None,
-            date_str=match_datetime.strftime("%B %d, %Y")
-        )
-    
-    st.markdown("---")
-    
-    # Filters
-    st.markdown('<h3>🔍 Filter Predictions</h3>', unsafe_allow_html=True)
-    
-    filter_col1, filter_col2 = st.columns(2)
-    
-    with filter_col1:
-        stage_filter = st.multiselect(
-            "Tournament Stage",
-            options=sorted(predictions_df['stage'].unique().tolist())
-        )
-    
-    with filter_col2:
-        status_options = []
-        if any(storage.has_result(p['match_id']) and 
-               storage.get_match_result(p['match_id'])['actual_winner'] == p['predicted_winner'] 
-               for _, p in predictions_df.iterrows()):
-            status_options.append("Correct")
-        if any(storage.has_result(p['match_id']) and 
-               storage.get_match_result(p['match_id'])['actual_winner'] != p['predicted_winner'] 
-               for _, p in predictions_df.iterrows()):
-            status_options.append("Incorrect")
-        if any(not storage.has_result(p['match_id']) for _, p in predictions_df.iterrows()):
-            status_options.append("Pending")
-        
-        status_filter = st.multiselect(
-            "Status",
-            options=status_options
-        )
+        st.markdown(f"""
+        <div style="background: {bg_color}; padding: 1.2rem; border-radius: 0.8rem;
+                    border-left: 5px solid {status_color}; margin-bottom: 1rem;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 2fr 1fr 1fr; gap: 1rem; align-items: center;">
+                <div>
+                    <h4 style="color: #1a472a; margin: 0; font-size: 1rem; font-weight: 700;">
+                        {pred['team_1']}
+                    </h4>
+                </div>
+                <div style="text-align: center;">
+                    <span style="background: #ffb81c; color: #1a472a; padding: 0.3rem 0.6rem; 
+                               border-radius: 0.3rem; font-weight: 600; font-size: 0.8rem;">
+                        vs
+                    </span>
+                </div>
+                <div>
+                    <h4 style="color: #1a472a; margin: 0; font-size: 1rem; font-weight: 700;">
+                        {pred['team_2']}
+                    </h4>
+                </div>
+                <div style="text-align: center;">
+                    <p style="color: #666; margin: 0; font-size: 0.85rem;">
+                        <strong>Your Pick:</strong><br>
+                        <span style="color: #1a472a; font-weight: 700;">{pred['predicted_winner']}</span>
+                        {f'<br><strong>Result:</strong><br><span style=\"color: #666;\">{actual}</span>' if result else '<br>—'}
+                    </p>
+                </div>
+                <div style="text-align: center;">
+                    <span style="background: {status_color}; color: white; padding: 0.5rem 0.8rem; 
+                               border-radius: 0.4rem; font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 0.5rem;">
+                        {status_icon} {status_text}
+                    </span>
+                    {f'<span style="background: #ffb81c; color: #1a472a; padding: 0.4rem 0.6rem; border-radius: 0.3rem; font-weight: 600; display: block;">+{points_earned} PTS</span>' if result else ''}
+                </div>
+            </div>
+            <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(0,0,0,0.1);">
+                <small style="color: #999;">
+                    📅 {match_datetime.strftime('%B %d, %Y')} at {match_datetime.strftime('%H:%M')} • 
+                    <span style="background: #e53238; color: white; padding: 0.2rem 0.4rem; border-radius: 0.2rem; font-size: 0.75rem; font-weight: 600;">
+                        {pred['stage']}
+                    </span>
+                </small>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 except Exception as e:
     st.error(f"Error loading predictions: {e}")
