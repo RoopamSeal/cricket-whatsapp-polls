@@ -13,6 +13,21 @@ storage.initialize_data_layer()
 
 st.set_page_config(page_title="My Predictions - World Cup 2026", layout="wide")
 
+# Add missing CSS to fix the white-on-white text in the metric cards
+st.markdown("""
+<style>
+    /* Metric Card Fixes */
+    .metric-card {
+        background-color: #e2e8f0;
+        padding: 1.2rem;
+        border-radius: 0.8rem;
+        border: 2px solid #ffb81c;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        margin-bottom: 0.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <h1 style="text-align: center;">📊 MY PREDICTIONS</h1>
 <p style="text-align: center; color: #e53238; font-size: 1rem;">
@@ -70,32 +85,32 @@ try:
     with col1:
         st.markdown(f"""
         <div class="metric-card">
-            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">🎯 Total</p>
-            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{total_preds}</h3>
+            <p style="color: #1a472a; margin: 0; font-size: 0.9rem; font-weight: 700;">🎯 Total</p>
+            <h3 style="color: #e53238; border: none; margin: 0.5rem 0; font-size: 2rem;">{total_preds}</h3>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
         <div class="metric-card">
-            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">✅ Correct</p>
-            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{correct}</h3>
+            <p style="color: #1a472a; margin: 0; font-size: 0.9rem; font-weight: 700;">✅ Correct</p>
+            <h3 style="color: #e53238; border: none; margin: 0.5rem 0; font-size: 2rem;">{correct}</h3>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown(f"""
         <div class="metric-card">
-            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">📊 Accuracy</p>
-            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{accuracy:.1f}%</h3>
+            <p style="color: #1a472a; margin: 0; font-size: 0.9rem; font-weight: 700;">📊 Accuracy</p>
+            <h3 style="color: #e53238; border: none; margin: 0.5rem 0; font-size: 2rem;">{accuracy:.1f}%</h3>
         </div>
         """, unsafe_allow_html=True)
     
     with col4:
         st.markdown(f"""
         <div class="metric-card">
-            <p style="color: #ffb81c; margin: 0; font-size: 0.9rem;">⭐ Points</p>
-            <h3 style="color: #ffb81c; border: none; margin: 0.5rem 0; font-size: 2rem;">{points}</h3>
+            <p style="color: #1a472a; margin: 0; font-size: 0.9rem; font-weight: 700;">⭐ Points</p>
+            <h3 style="color: #e53238; border: none; margin: 0.5rem 0; font-size: 2rem;">{points}</h3>
         </div>
         """, unsafe_allow_html=True)
     
@@ -128,9 +143,9 @@ try:
             actual = result['actual_winner']
             points_earned = 3 if (is_correct and actual != 'draw') else 2 if (is_correct and actual == 'draw') else 0
             
-            # Pre-format conditional HTML to prevent f-string conflicts
-            result_html = f"<br><strong>Result:</strong><br><span style='color: #666;'>{actual}</span>"
-            points_html = f"<span style='background: #ffb81c; color: #1a472a; padding: 0.4rem 0.6rem; border-radius: 0.3rem; font-weight: 600; display: block; margin-top: 0.5rem;'>+{points_earned} PTS</span>"
+            # HTML fragments for completed matches
+            result_display = f'<br><strong>Result:</strong><br><span style="color: #666;">{actual}</span>'
+            points_display = f'<span style="background: #ffb81c; color: #1a472a; padding: 0.4rem 0.6rem; border-radius: 0.3rem; font-weight: 600; display: block;">+{points_earned} PTS</span>'
         else:
             status_icon = "⏳"
             status_text = "PENDING"
@@ -139,46 +154,47 @@ try:
             actual = "-"
             points_earned = 0
             
-            # Pre-format conditional HTML
-            result_html = "<br>—"
-            points_html = ""
+            # HTML fragments for pending matches
+            result_display = '<br>—'
+            points_display = ''
         
-        # Use a flush-left HTML string without excessive indentation 
-        # to prevent Streamlit from rendering it as a Markdown code block.
-        html_card = f"""
+        # Un-indented HTML string prevents the Markdown parser from rendering a code block
+        st.markdown(f"""
 <div style="background: {bg_color}; padding: 1.2rem; border-radius: 0.8rem; border-left: 5px solid {status_color}; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-    <div style="display: grid; grid-template-columns: 3fr 1fr 3fr 2fr 2fr; gap: 1rem; align-items: center;">
-        <div>
-            <h4 style="color: #1a472a; margin: 0; font-size: 1rem; font-weight: 700;">{pred['team_1']}</h4>
-        </div>
-        <div style="text-align: center;">
-            <span style="background: #ffb81c; color: #1a472a; padding: 0.3rem 0.6rem; border-radius: 0.3rem; font-weight: 600; font-size: 0.8rem;">vs</span>
-        </div>
-        <div>
-            <h4 style="color: #1a472a; margin: 0; font-size: 1rem; font-weight: 700;">{pred['team_2']}</h4>
-        </div>
-        <div style="text-align: center;">
-            <p style="color: #666; margin: 0; font-size: 0.85rem;">
-                <strong>Your Pick:</strong><br>
-                <span style="color: #1a472a; font-weight: 700;">{pred['predicted_winner']}</span>
-                {result_html}
-            </p>
-        </div>
-        <div style="text-align: center;">
-            <span style="background: {status_color}; color: white; padding: 0.5rem 0.8rem; border-radius: 0.4rem; font-weight: 600; font-size: 0.85rem; display: block;">
-                {status_icon} {status_text}
-            </span>
-            {points_html}
-        </div>
-    </div>
-    <div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(0,0,0,0.1);">
-        <small style="color: #999;">
-            📅 {match_datetime_ist.strftime('%B %d, %Y')} at {match_datetime_ist.strftime('%H:%M')} IST • 
-            <span style="background: #e53238; color: white; padding: 0.2rem 0.4rem; border-radius: 0.2rem; font-size: 0.75rem; font-weight: 600;">{pred['stage']}</span>
-        </small>
-    </div>
+<div style="display: grid; grid-template-columns: 2fr 1fr 2fr 1fr 1fr; gap: 1rem; align-items: center;">
+<div>
+<h4 style="color: #1a472a; margin: 0; font-size: 1rem; font-weight: 700;">{pred['team_1']}</h4>
 </div>
-"""
-        st.markdown(html_card, unsafe_allow_html=True)
+<div style="text-align: center;">
+<span style="background: #ffb81c; color: #1a472a; padding: 0.3rem 0.6rem; border-radius: 0.3rem; font-weight: 600; font-size: 0.8rem;">vs</span>
+</div>
+<div>
+<h4 style="color: #1a472a; margin: 0; font-size: 1rem; font-weight: 700;">{pred['team_2']}</h4>
+</div>
+<div style="text-align: center;">
+<p style="color: #666; margin: 0; font-size: 0.85rem;">
+<strong>Your Pick:</strong><br>
+<span style="color: #1a472a; font-weight: 700;">{pred['predicted_winner']}</span>
+{result_display}
+</p>
+</div>
+<div style="text-align: center;">
+<span style="background: {status_color}; color: white; padding: 0.5rem 0.8rem; border-radius: 0.4rem; font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 0.5rem;">
+{status_icon} {status_text}
+</span>
+{points_display}
+</div>
+</div>
+<div style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(0,0,0,0.1);">
+<small style="color: #999;">
+📅 {match_datetime_ist.strftime('%B %d, %Y')} at {match_datetime_ist.strftime('%H:%M')} IST • 
+<span style="background: #e53238; color: white; padding: 0.2rem 0.4rem; border-radius: 0.2rem; font-size: 0.75rem; font-weight: 600;">
+{pred['stage']}
+</span>
+</small>
+</div>
+</div>
+""", unsafe_allow_html=True)
+
 except Exception as e:
     st.error(f"Error loading predictions: {e}")
