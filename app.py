@@ -40,7 +40,7 @@ if 'user_id' not in st.session_state:
 if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
-# FIFA World Cup 2026 Custom CSS - Enhanced Design & Bug Fixes
+# FIFA World Cup 2026 Custom CSS - Enhanced Design & Banner Fixes
 st.markdown("""
 <style>
     /* Main color scheme - FIFA 2026 inspired */
@@ -84,6 +84,46 @@ st.markdown("""
         border-left: 4px solid #e53238;
         padding-left: 0.8rem;
     }
+
+    /* ----------------------------------------------------
+       HERO BANNER CSS
+       ---------------------------------------------------- */
+    .banner-header {
+        /* Add your copied image URL below inside the url('') */
+        background: linear-gradient(rgba(26, 71, 42, 0.85), rgba(26, 71, 42, 0.95)), 
+                    url('INSERT_YOUR_IMAGE_URL_HERE') center/cover no-repeat;
+        padding: 4rem 2rem;
+        border-radius: 1rem;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    
+    .banner-header h1 {
+        color: #ffffff !important;
+        border-bottom: none !important;
+        font-size: 3.5rem !important;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        margin: 0 0 0.5rem 0;
+        padding: 0;
+    }
+    
+    .banner-header h2 {
+        color: #ffb81c !important;
+        border-bottom: none !important;
+        font-size: 1.5rem !important;
+        margin: 0;
+        letter-spacing: 2px;
+    }
+
+    .banner-header p {
+        color: #f5f5f5;
+        font-size: 1.2rem;
+        max-width: 600px;
+        margin: 1.5rem auto 0 auto;
+        opacity: 0.9;
+    }
+    /* ---------------------------------------------------- */
     
     /* Leaderboard header */
     .leaderboard-header {
@@ -121,9 +161,7 @@ st.markdown("""
         color: #1a472a !important;
     }
 
-    /* ----------------------------------------------------
-       FIX FOR INVISIBLE METRIC TEXT (WHITE ON WHITE)
-       ---------------------------------------------------- */
+    /* Metric Fixes */
     [data-testid="stMetric"] {
         background-color: #ffffff;
         padding: 1.2rem;
@@ -134,17 +172,16 @@ st.markdown("""
     }
     
     [data-testid="stMetricLabel"] * {
-        color: #1a472a !important; /* Forces the label text to be Dark Green */
+        color: #1a472a !important; 
         font-weight: 700 !important;
         font-size: 1rem !important;
     }
     
     [data-testid="stMetricValue"] * {
-        color: #e53238 !important; /* Forces the value text to be Red */
+        color: #e53238 !important; 
         font-weight: 800 !important;
         font-size: 2rem !important;
     }
-    /* ---------------------------------------------------- */
     
     /* Alert styling */
     .stAlert {
@@ -248,27 +285,15 @@ st.sidebar.markdown("""
 
 # Main page routing
 if st.session_state.user_id is None:
-    col1, col2 = st.columns([2, 1])
     
-    with col1:
-        st.markdown("""
-        <div style="padding: 2rem 0;">
-            <h1 style="font-size: 3.5rem; margin: 0; border: none; padding: 0;">⚽ WORLD CUP 2026</h1>
-            <h2 style="color: #e53238; margin: 0.5rem 0 1.5rem 0; border: none;">PREDICTION PLATFORM</h2>
-            <p style="font-size: 1.2rem; color: #444; max-width: 600px;">
-                Join millions of football fans worldwide. Predict match outcomes, climb the global leaderboard, and prove your football knowledge!
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-        <div style="text-align: right; font-size: 5rem; padding: 2rem 0;">
-            🇺🇸🇨🇦🇲🇽
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("---")
+    # NEW FULL-WIDTH HERO BANNER
+    st.markdown("""
+    <div class="banner-header">
+        <h1>⚽ WORLD CUP 2026</h1>
+        <h2>PREDICTION PLATFORM</h2>
+        <p>Join millions of football fans worldwide. Predict match outcomes, climb the global leaderboard, and prove your football knowledge!</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
     
