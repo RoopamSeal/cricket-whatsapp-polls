@@ -85,7 +85,7 @@ try:
             status_badge = f"⏱️ {reason}"
             status_color = "#e53238"
         else:
-            card_color = "#f5f5f5"
+            card_color = "#e2e8f0"
             border_color = "#ffb81c"
             status_badge = "🎯 OPEN"
             status_color = "#ffb81c"
