@@ -5,7 +5,6 @@ import logging
 import streamlit as st
 from src.config import Config
 from src.storage import Storage
-from src.scheduler import start_background_tasks
 from src.fixtures import FixtureLoader
 
 logging.basicConfig(
@@ -28,11 +27,6 @@ storage.initialize_data_layer()
 
 fixture_loader = FixtureLoader(config)
 fixture_loader.ensure_fixtures_loaded(storage)
-
-# Start background scheduler (runs once per session)
-if 'scheduler_started' not in st.session_state:
-    start_background_tasks()
-    st.session_state.scheduler_started = True
 
 # Session state initialization
 if 'user_id' not in st.session_state:
