@@ -11,8 +11,6 @@ config = Config()
 storage = Storage(config)
 storage.initialize_data_layer()
 
-st.set_page_config(page_title="Admin - World Cup 2026", layout="wide")
-
 st.markdown("""
 <h1 style="text-align: center;">⚙️ ADMIN CONSOLE</h1>
 <p style="text-align: center; color: #e53238; font-size: 1rem;">
@@ -30,7 +28,7 @@ if "admin_authenticated" not in st.session_state:
 
 if not st.session_state.admin_authenticated:
     password = st.text_input("Enter admin password:", type="password")
-    if st.button("🔓 Authenticate", width="stretch", type="primary"):
+    if st.button("🔓 Authenticate", use_container_width=True, type="primary"):
         if password == admin_password:
             st.session_state.admin_authenticated = True
             st.rerun()
@@ -57,7 +55,7 @@ with tab1:
     # Fetch raw data from Postgres
     data = storage.db.fetch_all(f"SELECT * FROM {table_choice} LIMIT 10")
     if data:
-        st.dataframe(pd.DataFrame(data), width="stretch")
+        st.dataframe(pd.DataFrame(data), use_container_width=True)
     else:
         st.info("No data found.")
 
@@ -75,7 +73,7 @@ with tab2:
         
         winner = st.radio("Winner", [selected_match['team_1'], selected_match['team_2'], 'draw'], horizontal=True)
         
-        if st.button("💾 Save Result", width="stretch", type="primary"):
+        if st.button("💾 Save Result", use_container_width=True, type="primary"):
             # 1. Update Match Status
             storage.db.update("matches", {"status": "completed"}, "match_id = ?", (selected_match['match_id'],))
             
@@ -97,7 +95,7 @@ with tab2:
 # ========== TAB 3: Maintenance ==========
 with tab3:
     st.markdown("## 🔧 Maintenance")
-    if st.button("🔴 RESET ALL TABLES (DANGER)", width="stretch"):
+    if st.button("🔴 RESET ALL TABLES (DANGER)", use_container_width=True):
         if st.checkbox("I am absolutely sure"):
             try:
                 # Direct SQL to clear data

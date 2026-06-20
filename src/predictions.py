@@ -100,49 +100,30 @@ class PredictionManager:
         """
         Process results for a match and calculate points for all predictions.
         """
-        # Get all predictions for the match
-        predictions_df = pd.read_csv(self.config.PREDICTION_FACT_PATH)
-        match_predictions = predictions_df[predictions_df['match_id'] == match_id]
-        
-        logger.info(f"Processing results for match {match_id} ({len(match_predictions)} predictions)")
-        
-        for _, prediction in match_predictions.iterrows():
+        predictions = self.storage.db.fetch_all(
+            "SELECT * FROM predictions WHERE match_id = %s", (match_id,)
+        )
+        logger.info(f"Processing results for match {match_id} ({len(predictions)} predictions)")
+
+        for prediction in predictions:
             points = self.calculate_points(prediction['predicted_winner'], actual_winner)
             self.storage.save_points(prediction['user_id'], match_id, points)
-    
+
     def get_user_prediction_accuracy(self, user_id: str) -> Dict[str, Any]:
         """Calculate user's prediction accuracy."""
-        import pandas as pd
-        
-        predictions_df = pd.read_csv(self.config.PREDICTION_FACT_PATH)
-        user_predictions = predictions_df[predictions_df['user_id'] == user_id]
-        
-        total = len(user_predictions)
+        total = self.storage.get_user_prediction_count(user_id)
         if total == 0:
             return {
                 'total_predictions': 0,
                 'correct_predictions': 0,
                 'accuracy_percentage': 0.0
             }
-        
-        # Count correct predictions by checking if result matches
-        correct_count = 0
-        results_df = pd.read_csv(self.config.MATCH_RESULT_PATH)
-        
-        for _, prediction in user_predictions.iterrows():
-            result = results_df[results_df['match_id'] == prediction['match_id']]
-            if not result.empty:
-                if result.iloc[0]['actual_winner'] == prediction['predicted_winner']:
-                    correct_count += 1
-        
+
+        correct_count = self.storage.get_user_correct_predictions(user_id)
         accuracy = (correct_count / total * 100) if total > 0 else 0
-        
+
         return {
             'total_predictions': total,
             'correct_predictions': correct_count,
             'accuracy_percentage': round(accuracy, 2)
         }
-
-
-# Add pandas import at module level
-import pandas as pd

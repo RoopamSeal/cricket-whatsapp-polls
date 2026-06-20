@@ -11,8 +11,6 @@ config = Config()
 storage = Storage(config)
 storage.initialize_data_layer()
 
-st.set_page_config(page_title="My Predictions - World Cup 2026", layout="wide")
-
 st.markdown("""
 <h1 style="text-align: center;">📊 MY PREDICTIONS</h1>
 <p style="text-align: center; color: #e53238; font-size: 1rem;">

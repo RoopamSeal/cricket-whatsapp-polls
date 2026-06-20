@@ -18,8 +18,6 @@ config = Config()
 storage = Storage(config)
 storage.initialize_data_layer()
 
-st.set_page_config(page_title="Leaderboard - World Cup 2026", layout="wide")
-
 st.markdown("""
 <h1 style="text-align: center;">🏆 GLOBAL LEADERBOARD</h1>
 <p style="text-align: center; color: #e53238; font-size: 1rem;">
@@ -191,7 +189,7 @@ try:
         display_df['📊 Accuracy %'] = display_df['📊 Accuracy %'].apply(lambda x: f"{x:.1f}%")
         
         # Deprecation Warning Fixed: width="stretch" replaces use_container_width=True
-        st.dataframe(display_df, width="stretch", hide_index=True)
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
         
         st.markdown("---")
         

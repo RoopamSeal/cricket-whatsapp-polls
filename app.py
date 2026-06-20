@@ -221,6 +221,89 @@ st.markdown("""
     .animate-in {
         animation: fadeInUp 0.6s ease both;
     }
+
+    /* ============ MOBILE RESPONSIVE ============ */
+    @media screen and (max-width: 768px) {
+        /* Tighter padding on small screens */
+        [data-testid="stMainBlockContainer"] {
+            padding: 0.75rem !important;
+        }
+        /* Stack Streamlit columns vertically */
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+        }
+        [data-testid="column"] {
+            flex: 1 1 100% !important;
+            min-width: 260px !important;
+        }
+        /* Touch-friendly tap targets */
+        .stButton > button {
+            min-height: 48px !important;
+            font-size: 0.95rem !important;
+        }
+        /* Prevent iOS auto-zoom when focusing inputs */
+        input, textarea, select,
+        .stTextInput input,
+        .stSelectbox select {
+            font-size: 16px !important;
+        }
+        /* Headings */
+        h1 { font-size: 2rem !important; }
+        h2 { font-size: 1.4rem !important; }
+        h3 { font-size: 1.1rem !important; }
+        /* Banner */
+        .banner-header { padding: 2rem 1rem !important; }
+        .banner-header h1 { font-size: 2.2rem !important; }
+        /* Glass login card */
+        .glass-card { padding: 1.5rem 1rem !important; }
+        /* Match-card inner grids → flex column */
+        .match-card [style*="grid-template-columns"],
+        .prediction-card [style*="grid-template-columns"] {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.4rem !important;
+        }
+        /* Tournament info 4-column grid → 2 columns */
+        div[style*="grid-template-columns:repeat(4"] {
+            display: flex !important;
+            flex-wrap: wrap !important;
+        }
+        div[style*="grid-template-columns:repeat(4"] > div {
+            flex: 1 1 calc(50% - 0.5rem) !important;
+            min-width: 130px !important;
+        }
+        /* Scrollable data tables */
+        [data-testid="stDataFrameContainer"],
+        [data-testid="stDataFrame"] {
+            overflow-x: auto !important;
+        }
+        /* Metric cards */
+        [data-testid="stMetric"] {
+            margin-bottom: 0.4rem !important;
+        }
+        /* Tabs */
+        .stTabs [data-baseweb="tab"] {
+            padding: 0.6rem 0.8rem !important;
+            font-size: 0.85rem !important;
+        }
+        /* Sidebar full-width when open on mobile */
+        section[data-testid="stSidebar"][aria-expanded="true"] {
+            min-width: min(280px, 85vw) !important;
+            max-width: 85vw !important;
+        }
+    }
+
+    @media screen and (max-width: 480px) {
+        [data-testid="stMainBlockContainer"] { padding: 0.5rem !important; }
+        h1 { font-size: 1.6rem !important; }
+        .banner-header h1 { font-size: 1.8rem !important; }
+        /* Tournament grid → 1 column on very small screens */
+        div[style*="grid-template-columns:repeat(4"] > div {
+            flex: 1 1 100% !important;
+        }
+        /* Feature cards */
+        .feature-card { margin-bottom: 0.75rem !important; }
+    }
 </style>
 """, unsafe_allow_html=True)
 

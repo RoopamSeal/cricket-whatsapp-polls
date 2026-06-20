@@ -44,24 +44,79 @@ if st.session_state.user_id is None:
   <h2 style="color:#1a472a; border:none; font-size:1.5rem; margin:0 0 0.3rem; font-weight:800;">
       Join the Tournament
   </h2>
-  <p style="color:#666; font-size:0.9rem; margin:0 0 1.5rem;">Create or continue your profile to start predicting</p>
+  <p style="color:#666; font-size:0.9rem; margin:0 0 0.3rem;">Log in or register with your email address</p>
 </div>
 """, unsafe_allow_html=True)
-        username = st.text_input(
-            "Username",
-            placeholder="Enter your username...",
+        st.markdown(
+            '<p style="color:#555; font-size:0.82rem; font-weight:700; margin:0.6rem 0 0.25rem; '
+            'letter-spacing:0.5px;">📧 EMAIL ADDRESS</p>',
+            unsafe_allow_html=True,
+        )
+        email = st.text_input(
+            "Email Address",
+            placeholder="you@example.com",
             label_visibility="collapsed",
-            key="home_login_username",
+            key="home_login_email",
+        )
+        st.markdown(
+            '<p style="color:#555; font-size:0.82rem; font-weight:700; margin:0.6rem 0 0.25rem; '
+            'letter-spacing:0.5px;">👤 DISPLAY NAME '
+            '<span style="font-weight:400; color:#999;">(new users only)</span></p>',
+            unsafe_allow_html=True,
+        )
+        display_name = st.text_input(
+            "Display Name",
+            placeholder="How you'll appear on the leaderboard",
+            label_visibility="collapsed",
+            key="home_login_displayname",
         )
         if st.button("⚡  JOIN NOW", use_container_width=True, type="primary"):
-            if username.strip():
-                user = storage.get_or_create_user(username.strip())
+            email_clean = email.strip().lower()
+            if email_clean and '@' in email_clean and '.' in email_clean.split('@')[-1]:
+                user = storage.get_or_create_user_by_email(email_clean, display_name.strip())
                 st.session_state.user_id = user['user_id']
                 st.session_state.user_name = user['user_name']
-                st.success(f"🎉 Welcome, {username.strip()}!")
+                st.success(f"🎉 Welcome, {user['user_name']}!")
                 st.rerun()
             else:
-                st.error("Please enter a username to continue.")
+                st.error("Please enter a valid email address.")
+
+        st.markdown("<div style='height:0.75rem'></div>", unsafe_allow_html=True)
+
+        with st.expander("🔍 Forgot your display name?"):
+            st.markdown(
+                '<p style="color:#666; font-size:0.9rem; margin:0 0 0.5rem;">'
+                'Enter your registered email to retrieve your account details.</p>',
+                unsafe_allow_html=True,
+            )
+            lookup_email = st.text_input(
+                "Lookup Email",
+                placeholder="your@email.com",
+                label_visibility="collapsed",
+                key="home_lookup_email",
+            )
+            if st.button("🔎 Find My Account", use_container_width=True, key="home_lookup_btn"):
+                lookup_clean = lookup_email.strip().lower()
+                if lookup_clean and '@' in lookup_clean:
+                    found = storage.get_user_by_email(lookup_clean)
+                    if found:
+                        st.success(
+                            f"✅ Account found!\n\n"
+                            f"**Display Name:** {found['user_name']}\n\n"
+                            f"**Registered:** {found['registration_date'][:10]}"
+                        )
+                        if st.button(
+                            f"Log in as {found['user_name']}",
+                            use_container_width=True,
+                            key="home_lookup_login_btn",
+                        ):
+                            st.session_state.user_id = found['user_id']
+                            st.session_state.user_name = found['user_name']
+                            st.rerun()
+                    else:
+                        st.warning("No account found with that email address.")
+                else:
+                    st.error("Please enter a valid email address.")
 
     st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
 
