@@ -42,7 +42,7 @@ try:
         st.stop()
     
     # Filter for active (scheduled) matches
-    active_matches = matches_df[matches_df['status'] == 'scheduled'].copy()
+    active_matches = matches_df[matches_df['status'].str.lower() == 'scheduled'].copy()
 
     if active_matches.empty:
         st.info("⏰ No upcoming matches to predict on right now.")
