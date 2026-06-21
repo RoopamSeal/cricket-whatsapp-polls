@@ -45,6 +45,373 @@ class Storage:
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
             raise
+
+    # ============ ADDITIONAL PREDICTION METHODS ============
+    
+    def get_user_prediction_count(self, user_id: str) -> int:
+        """
+        Get count of predictions made by user.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Number of predictions
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM predictions WHERE user_id = ?",
+                (user_id,)
+            )
+            result = cursor.fetchone()
+            return result['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting prediction count: {e}")
+            return 0
+    
+    def get_user_correct_prediction_count(self, user_id: str) -> int:
+        """
+        Get count of correct predictions by user.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Number of correct predictions
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            SELECT COUNT(*) as count FROM predictions p
+            JOIN match_results mr ON p.match_id = mr.match_id
+            WHERE p.user_id = ? AND p.predicted_winner = mr.actual_winner
+            """, (user_id,))
+            result = cursor.fetchone()
+            return result['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting correct prediction count: {e}")
+            return 0
+    
+    def get_user_total_points(self, user_id: str) -> int:
+        """
+        Get total points for user.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Total points
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT COALESCE(SUM(points_earned), 0) as total FROM predictions WHERE user_id = ?",
+                (user_id,)
+            )
+            result = cursor.fetchone()
+            return result['total'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting total points: {e}")
+            return 0
+    
+    def get_user_accuracy(self, user_id: str) -> float:
+        """
+        Get prediction accuracy for user.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Accuracy percentage (0-100)
+        """
+        try:
+            total = self.get_user_prediction_count(user_id)
+            if total == 0:
+                return 0.0
+            
+            correct = self.get_user_correct_prediction_count(user_id)
+            return (correct / total * 100)
+        except Exception as e:
+            logger.error(f"Error calculating accuracy: {e}")
+            return 0.0
+    
+    def has_user_predicted(self, match_id: str, user_id: str) -> bool:
+        """
+        Check if user has made prediction for match.
+        
+        Args:
+            match_id: Match ID
+            user_id: User ID
+        
+        Returns:
+            True if user has predicted, False otherwise
+        """
+        try:
+            pred = self.get_prediction(match_id, user_id)
+            return pred is not None
+        except Exception as e:
+            logger.error(f"Error checking prediction: {e}")
+            return False
+    
+    def delete_prediction(self, prediction_id: str) -> bool:
+        """
+        Delete a prediction.
+        
+        Args:
+            prediction_id: Prediction ID
+        
+        Returns:
+            Success status
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "DELETE FROM predictions WHERE prediction_id = ?",
+                (prediction_id,)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting prediction: {e}")
+            return False
+    
+    def update_prediction_winner(self, prediction_id: str, predicted_winner: str) -> bool:
+        """
+        Update predicted winner for a prediction.
+        
+        Args:
+            prediction_id: Prediction ID
+            predicted_winner: New predicted winner
+        
+        Returns:
+            Success status
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE predictions SET predicted_winner = ? WHERE prediction_id = ?",
+                (predicted_winner, prediction_id)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating prediction: {e}")
+            return False
+    
+    def get_pending_predictions(self, user_id: str) -> List[Dict]:
+        """
+        Get predictions not yet processed (match not completed).
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            List of pending predictions
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            SELECT p.* FROM predictions p
+            LEFT JOIN match_results mr ON p.match_id = mr.match_id
+            WHERE p.user_id = ? AND mr.match_id IS NULL
+            ORDER BY p.timestamp DESC
+            """, (user_id,))
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting pending predictions: {e}")
+            return []
+    
+    def get_completed_predictions(self, user_id: str) -> List[Dict]:
+        """
+        Get predictions that have been processed (match completed).
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            List of completed predictions
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            SELECT p.*, mr.actual_winner FROM predictions p
+            LEFT JOIN match_results mr ON p.match_id = mr.match_id
+            WHERE p.user_id = ? AND mr.match_id IS NOT NULL
+            ORDER BY p.timestamp DESC
+            """, (user_id,))
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting completed predictions: {e}")
+            return []
+    
+    def get_predictions_by_stage(self, user_id: str, stage: str) -> List[Dict]:
+        """
+        Get predictions for a specific tournament stage.
+        
+        Args:
+            user_id: User ID
+            stage: Tournament stage
+        
+        Returns:
+            List of predictions for that stage
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            SELECT p.* FROM predictions p
+            JOIN matches m ON p.match_id = m.match_id
+            WHERE p.user_id = ? AND m.stage = ?
+            ORDER BY p.timestamp DESC
+            """, (user_id, stage))
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting predictions by stage: {e}")
+            return []
+    
+    # ============ MATCH RESULT METHODS (ADDITIONAL) ============
+    
+    def process_match_results(self, match_id: str, actual_winner: str) -> int:
+        """
+        Process all predictions for a match result.
+        
+        Args:
+            match_id: Match ID
+            actual_winner: Actual winner
+        
+        Returns:
+            Number of predictions processed
+        """
+        try:
+            # Save result
+            self.save_match_result(match_id, actual_winner)
+            
+            # Get all predictions for this match
+            predictions = self.get_match_predictions(match_id)
+            processed = 0
+            
+            # Update each prediction
+            for pred in predictions:
+                points = 0
+                if pred['predicted_winner'] == actual_winner:
+                    points = 2 if actual_winner == 'draw' else 3
+                
+                # Update prediction points
+                self.update_prediction_points(pred['prediction_id'], points)
+                
+                # Update user stats
+                self.update_user_stats(pred['user_id'])
+                
+                processed += 1
+            
+            logger.info(f"Processed {processed} predictions for match {match_id}")
+            return processed
+        
+        except Exception as e:
+            logger.error(f"Error processing match results: {e}")
+            return 0
+    
+    # ============ BATCH OPERATIONS ============
+    
+    def bulk_create_matches(self, matches: List[Dict]) -> int:
+        """
+        Create multiple matches at once.
+        
+        Args:
+            matches: List of match dictionaries
+        
+        Returns:
+            Number of matches created
+        """
+        try:
+            cursor = self.conn.cursor()
+            created = 0
+            
+            for match in matches:
+                try:
+                    cursor.execute("""
+                    INSERT OR IGNORE INTO matches 
+                    (match_id, team_1, team_2, stage, match_date, kickoff_time, venue, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
+                    """, (
+                        match.get('match_id'),
+                        match.get('team_1'),
+                        match.get('team_2'),
+                        match.get('stage'),
+                        match.get('match_date'),
+                        match.get('kickoff_time'),
+                        match.get('venue', '')
+                    ))
+                    created += 1
+                except Exception as e:
+                    logger.warning(f"Error creating match: {e}")
+                    continue
+            
+            self.conn.commit()
+            logger.info(f"Bulk created {created} matches")
+            return created
+        
+        except Exception as e:
+            logger.error(f"Error in bulk_create_matches: {e}")
+            return 0
+    
+    # ============ SEARCH/FILTER METHODS ============
+    
+    def search_matches(self, query: str) -> List[Dict]:
+        """
+        Search matches by team name or stage.
+        
+        Args:
+            query: Search query
+        
+        Returns:
+            List of matching matches
+        """
+        try:
+            search = f"%{query}%"
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            SELECT * FROM matches 
+            WHERE team_1 LIKE ? OR team_2 LIKE ? OR stage LIKE ?
+            ORDER BY match_date, kickoff_time
+            """, (search, search, search))
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error searching matches: {e}")
+            return []
+    
+    def get_upcoming_matches(self, limit: int = 10) -> List[Dict]:
+        """
+        Get upcoming scheduled matches.
+        
+        Args:
+            limit: Maximum number to return
+        
+        Returns:
+            List of upcoming matches
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            SELECT * FROM matches 
+            WHERE status = 'scheduled'
+            ORDER BY match_date, kickoff_time
+            LIMIT ?
+            """, (limit,))
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting upcoming matches: {e}")
+            return []
     
     def _create_tables(self):
         """Create necessary database tables."""
