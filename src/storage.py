@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @st.cache_resource
 def get_storage() -> "Storage":
-    """Return a cached Storage instance."""
+    """Return a single cached Storage instance."""
     config = Config()
     return Storage(config)
 
@@ -27,20 +27,22 @@ class Storage:
     def load_fixtures(self, df) -> None:
         """Populates fixtures from DataFrame into the database."""
         for _, row in df.iterrows():
+            match_date = str(row['match_date'])
+            kickoff = str(row['kickoff_time'])
+            
             match_data = {
                 'match_id': str(row['match_id']),
                 'team_1': str(row['team_1']),
                 'team_2': str(row['team_2']),
                 'stage': str(row['stage']),
-                'match_date': str(row['match_date']),
-                'kickoff_time': str(row['kickoff_time']),
+                'match_date': match_date,
+                'kickoff_time': kickoff,
+                'kickoff_time_ist': str(row.get('kickoff_time_ist', kickoff)),
+                'match_datetime': f"{match_date} {kickoff}",
                 'venue': str(row.get('venue', '')),
-                'status': str(row.get('status', 'scheduled')),
-                'kickoff_time_ist': str(row.get('kickoff_time_ist', row['kickoff_time']))
+                'status': str(row.get('status', 'scheduled'))
             }
-            # Using your DB class's generic insert method
             self.db.insert("matches", match_data)
-        logger.info(f"Loaded {len(df)} fixtures")
 
     def get_all_matches(self) -> List[Dict[str, Any]]:
         return self.db.fetch_all("SELECT * FROM matches ORDER BY match_date, kickoff_time")
@@ -48,7 +50,26 @@ class Storage:
     def get_match(self, match_id: str) -> Optional[Dict[str, Any]]:
         return self.db.fetch_one("SELECT * FROM matches WHERE match_id = %s", (match_id,))
 
-    # ============ USER METHODS ============
+    def update_match_status(self, match_id: str, status: str) -> None:
+        self.db.update("matches", {"status": status}, "match_id = %s", (match_id,))
+
+    # ============ USER MANAGEMENT ============
+    def get_or_create_user(self, user_id: str, user_name: str, email: str = "", country: str = "") -> Dict[str, Any]:
+        """Get or create a user (Used by Home page manual registration)."""
+        user = self.db.fetch_one("SELECT * FROM users WHERE email = %s", (email,))
+        if user:
+            return user
+            
+        new_user = {
+            'user_id': user_id,
+            'user_name': user_name,
+            'email': email,
+            'country': country,
+            'created_at': datetime.datetime.now().isoformat()
+        }
+        self.db.insert("users", new_user)
+        return new_user
+
     def get_or_create_user_by_email(self, email: str, display_name: str = "") -> Dict[str, Any]:
         """Find existing user by email or create new one."""
         user = self.db.fetch_one("SELECT * FROM users WHERE email = %s", (email,))
@@ -67,7 +88,7 @@ class Storage:
         self.db.insert("users", new_user)
         return new_user
 
-    # ============ PREDICTION METHODS ============
+    # ============ PREDICTION & STATS ============
     def create_prediction(self, user_id: str, match_id: str, predicted_winner: str) -> bool:
         pred_data = {
             'prediction_id': str(uuid.uuid4()),
@@ -84,53 +105,30 @@ class Storage:
     def get_user_correct_predictions(self, user_id: str) -> int:
         query = """
         SELECT COUNT(*) as count FROM predictions p
-        JOIN results r ON p.match_id = r.match_id
+        JOIN match_results r ON p.match_id = r.match_id
         WHERE p.user_id = %s AND p.predicted_winner = r.actual_winner
         """
         result = self.db.fetch_one(query, (user_id,))
         return int(result['count']) if result else 0
 
-    # ============ RESULT METHODS ============
-    def save_result(self, match_id: str, actual_winner: str) -> bool:
-        res_data = {
-            'result_id': str(uuid.uuid4()),
-            'match_id': match_id,
-            'actual_winner': actual_winner,
-            'timestamp': datetime.datetime.now().isoformat()
-        }
-        success = self.db.insert("results", res_data) is not None
-        if success:
-            self.db.update("matches", {"status": "completed"}, "match_id = %s", (match_id,))
-        return success
-
-    def get_result(self, match_id: str) -> Optional[Dict[str, Any]]:
-        return self.db.fetch_one("SELECT * FROM results WHERE match_id = %s", (match_id,))
-
-    # ============ STATS METHODS ============
     def get_user_total_points(self, user_id: str) -> int:
-        """Fetch total points for a specific user."""
-        # Note: If you don't have a user_stats table, this gracefully returns 0
-        result = self.db.fetch_one(
-            "SELECT total_points FROM user_stats WHERE user_id = %s", (user_id,)
-        )
-        return int(result['total_points']) if result else 0
-
-    def get_user_prediction_count(self, user_id: str) -> int:
-        """Count total predictions made by a user."""
-        return self.db.count("predictions", "user_id = %s", (user_id,))
-
-    def get_user_correct_predictions(self, user_id: str) -> int:
-        """Count how many predictions a user got exactly right."""
+        """Calculate total points (3 for correct win, 2 for correct draw)."""
         query = """
-        SELECT COUNT(*) as count FROM predictions p
-        JOIN results r ON p.match_id = r.match_id
-        WHERE p.user_id = %s AND p.predicted_winner = r.actual_winner
+        SELECT SUM(
+            CASE 
+                WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
+                WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
+                ELSE 0
+            END
+        ) as total_points
+        FROM predictions p
+        JOIN match_results r ON p.match_id = r.match_id
+        WHERE p.user_id = %s
         """
         result = self.db.fetch_one(query, (user_id,))
-        return int(result['count']) if result else 0
+        return int(result['total_points']) if result and result['total_points'] else 0
 
     def get_user_stats(self, user_id: str) -> Dict[str, Any]:
-        """Calculate and compile all user stats for the dashboard."""
         total_preds = self.get_user_prediction_count(user_id)
         correct_preds = self.get_user_correct_predictions(user_id)
         total_points = self.get_user_total_points(user_id)
@@ -143,3 +141,47 @@ class Storage:
             'accuracy': accuracy,
             'total_points': total_points
         }
+
+    # ============ RESULTS & ADMIN API ============
+    def save_match_result(self, match_id: str, actual_winner: str) -> bool:
+        res_data = {
+            'result_id': str(uuid.uuid4()),
+            'match_id': match_id,
+            'actual_winner': actual_winner,
+            'result_timestamp': datetime.datetime.now().isoformat()
+        }
+        success = self.db.insert("match_results", res_data) is not None
+        if success:
+            self.update_match_status(match_id, "completed")
+        return success
+
+    def get_match_result(self, match_id: str) -> Optional[Dict[str, Any]]:
+        return self.db.fetch_one("SELECT * FROM match_results WHERE match_id = %s", (match_id,))
+
+    def sync_results_from_api(self, competition_code: str):
+        """Fetches results from football-data.org and updates the database."""
+        try:
+            from src.api import FootballAPI
+            api = FootballAPI()
+            matches = api.fetch_finished_matches(competition_code)
+            
+            count = 0
+            for match in matches:
+                match_id = str(match['id'])
+                score_info = match.get('score', {})
+                winner_key = score_info.get('winner')
+                
+                if winner_key == 'HOME_TEAM':
+                    winner_name = match['homeTeam']['name']
+                elif winner_key == 'AWAY_TEAM':
+                    winner_name = match['awayTeam']['name']
+                else:
+                    winner_name = 'draw'
+                    
+                if not self.get_match_result(match_id):
+                    self.save_match_result(match_id, winner_name)
+                    count += 1
+            
+            logger.info(f"Synced {count} new results from API")
+        except ImportError:
+            logger.error("Could not import API module")
