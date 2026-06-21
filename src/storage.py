@@ -37,6 +37,30 @@ class Storage:
         schema.init_database()
         logger.info("Data layer initialized successfully")
 
+    def sync_results_from_api(self, competition_code: str):
+        from src.api import FootballAPI
+        api = FootballAPI()
+        matches = api.fetch_finished_matches(competition_code)
+        
+        for match in matches:
+            match_id = str(match['id'])
+            # Determine winner
+            winner = match['score']['winner'] # Returns 'HOME_TEAM', 'AWAY_TEAM', or 'DRAW'
+            
+            # Map API winner to your DB format (e.g., team name)
+            if winner == 'HOME_TEAM':
+                winner_name = match['homeTeam']['name']
+            elif winner == 'AWAY_TEAM':
+                winner_name = match['awayTeam']['name']
+            else:
+                winner_name = 'draw'
+                
+            # Save to your database
+            self.save_match_result(match_id, winner_name)
+            self.update_match_status(match_id, 'completed')
+        
+        logger.info(f"Synced {len(matches)} results from API")
+
     # ============ User Management ============
     def get_or_create_user(self, user_name: str, email: str = "", country: str = "") -> Dict[str, Any]:
         user = self.db.fetch_one("SELECT * FROM users WHERE user_name = %s", (user_name,))
