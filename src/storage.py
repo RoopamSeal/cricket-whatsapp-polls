@@ -176,6 +176,7 @@ class Storage:
                 'team_2': str(row['team_2']),
                 'match_date': match_date,
                 'kickoff_time': kickoff,
+                'kickoff_time_ist': kickoff_ist,
                 'match_datetime': f"{match_date} {kickoff}",
                 'stage': str(row['stage']),
                 'venue': str(row['venue']),
