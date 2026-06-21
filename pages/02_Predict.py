@@ -112,12 +112,7 @@ try:
 
     # Display matches with prediction options
     for idx, (_, match) in enumerate(day_matches.iterrows()):
-        
-        # --- IST TIMING CONVERSION ---
-        match_datetime_us = pd.to_datetime(f"{match['match_date']} {match['kickoff_time']}")
-        match_datetime_ist = match_datetime_us + pd.Timedelta(hours=9, minutes=30)
-        # -----------------------------
-        
+        display_time = match['kickoff_time_ist']
         # Check if user already predicted
         user_prediction = storage.get_prediction(match['match_id'], st.session_state.user_id)
         can_predict, reason = pred_manager.can_predict(match['match_id'])
@@ -156,8 +151,8 @@ try:
                 </div>
                 <div style="text-align: center;">
                     <p style="color: #666; margin: 0; font-size: 0.85rem;">
-                        📅 {match_datetime_ist.strftime('%b %d')}<br>
-                        🕐 {match_datetime_ist.strftime('%H:%M')} IST<br>
+                        📅 {match['match_date']}<br>
+                        🕐 {match['kickoff_time_ist']} IST<br>
                         📍 {match['venue']}<br>
                         <span style="background: #e53238; color: white; padding: 0.2rem 0.5rem; border-radius: 0.3rem; font-size: 0.75rem; font-weight: 600;">{match['stage']}</span>
                     </p>
