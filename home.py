@@ -23,7 +23,7 @@ if st.session_state.user_id is None:
      margin-bottom: 0; box-shadow: 0 8px 32px rgba(0,0,0,0.35);">
   <div style="display:inline-block; background:rgba(255,184,28,0.15); border:1px solid rgba(255,184,28,0.5);
               border-radius:2rem; padding:0.3rem 1.2rem; margin-bottom:1rem;">
-    <span style="color:#ffb81c; font-size:0.85rem; font-weight:700; letter-spacing:3px;">Predict and Win!P</span>
+    <span style="color:#ffb81c; font-size:0.85rem; font-weight:700; letter-spacing:3px;">Predict and Win!</span>
   </div>
   <h1 style="color:#ffffff; font-size:4rem; font-weight:900; margin:0; line-height:1.1;
              text-shadow:0 4px 20px rgba(0,0,0,0.5); border:none; padding:0;">⚽FIFA WORLD CUP POLL 2026</h1>
