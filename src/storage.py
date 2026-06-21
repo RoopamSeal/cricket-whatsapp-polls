@@ -89,13 +89,14 @@ class Storage:
         return new_user
 
     # ============ PREDICTION & STATS ============
-    def create_prediction(self, user_id: str, match_id: str, predicted_winner: str) -> bool:
+    def create_prediction(self, prediction_id: str, user_id: str, match_id: str, predicted_winner: str, timestamp: str = None) -> bool:
+        """Create a prediction with backwards compatibility for old PredictionManager."""
         pred_data = {
-            'prediction_id': str(uuid.uuid4()),
+            'prediction_id': prediction_id or str(uuid.uuid4()),
             'user_id': user_id,
             'match_id': match_id,
             'predicted_winner': predicted_winner,
-            'timestamp': datetime.datetime.now().isoformat()
+            'timestamp': timestamp or datetime.datetime.now().isoformat()
         }
         return self.db.insert("predictions", pred_data) is not None
 
