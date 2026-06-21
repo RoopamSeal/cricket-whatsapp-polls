@@ -1,433 +1,774 @@
 """
-Storage layer bridging frontend calls to PostgreSQL database
+Storage module for FIFA World Cup Polls.
+
+Handles all database operations for matches, predictions, users, and results.
+Supports both SQLite and PostgreSQL backends.
 """
-import uuid
+
+import sqlite3
 import logging
-import datetime
-import streamlit as st
-from typing import Dict, List, Optional, Any
-from src.db import Database
-from src.config import Config
-from src.schema import DatabaseSchema
+from datetime import datetime, timezone
+from typing import List, Dict, Optional, Tuple
+import json
+import os
 
 logger = logging.getLogger(__name__)
 
-@st.cache_resource
-def get_storage() -> "Storage":
-    config = Config()
-    storage = Storage(config)
-    storage.initialize_data_layer()
-    return storage
-
-
-def get_match(self, match_id: str):
-    """
-    Get a match by ID.
-    
-    Args:
-        match_id: Match ID
-    
-    Returns:
-        Match dictionary or None
-    """
-    try:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM matches WHERE match_id = ?",
-            (match_id,)
-        )
-        row = cursor.fetchone()
-        
-        if row:
-            return {
-                'match_id': row[0],
-                'team_1': row[1],
-                'team_2': row[2],
-                'stage': row[3],
-                'match_date': row[4],
-                'kickoff_time': row[5],
-                'venue': row[6],
-                'status': row[7]
-            }
-        return None
-    except Exception as e:
-        logger.error(f"Error getting match: {e}")
-        return None
-
-
-def get_match_result(self, match_id: str):
-    """
-    Get match result.
-    
-    Args:
-        match_id: Match ID
-    
-    Returns:
-        Result dictionary or None
-    """
-    try:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM match_results WHERE match_id = ?",
-            (match_id,)
-        )
-        row = cursor.fetchone()
-        
-        if row:
-            return {
-                'match_id': row[0],
-                'actual_winner': row[1],
-                'timestamp': row[2]
-            }
-        return None
-    except Exception as e:
-        logger.error(f"Error getting match result: {e}")
-        return None
-
-
-def get_match_predictions(self, match_id: str):
-    """
-    Get all predictions for a match.
-    
-    Args:
-        match_id: Match ID
-    
-    Returns:
-        List of predictions
-    """
-    try:
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM predictions WHERE match_id = ?",
-            (match_id,)
-        )
-        rows = cursor.fetchall()
-        
-        predictions = []
-        for row in rows:
-            predictions.append({
-                'prediction_id': row[0],
-                'user_id': row[1],
-                'match_id': row[2],
-                'predicted_winner': row[3],
-                'timestamp': row[4]
-            })
-        
-        return predictions
-    except Exception as e:
-        logger.error(f"Error getting match predictions: {e}")
-        return []
-
-
-def create_prediction(self, prediction_id: str, user_id: str, match_id: str,
-                     predicted_winner: str, timestamp: str = None) -> bool:
-    """
-    Create a new prediction.
-    
-    Args:
-        prediction_id: Unique prediction ID
-        user_id: User ID
-        match_id: Match ID
-        predicted_winner: Predicted winner
-        timestamp: Prediction timestamp
-    
-    Returns:
-        Success status
-    """
-    try:
-        if timestamp is None:
-            from datetime import datetime, timezone
-            timestamp = datetime.now(timezone.utc).isoformat()
-        
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "INSERT INTO predictions (prediction_id, user_id, match_id, predicted_winner, timestamp) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (prediction_id, user_id, match_id, predicted_winner, timestamp)
-        )
-        self.conn.commit()
-        
-        logger.info(f"Prediction created: {prediction_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Error creating prediction: {e}")
-        return False
-
 
 class Storage:
-    def __init__(self, config: Config):
-        self.config = config
-        self.db = Database()
-        logger.info("Storage initialized with Database engine")
-
-    def initialize_data_layer(self) -> None:
-        schema = DatabaseSchema()
-        schema.init_database()
-        logger.info("Data layer initialized successfully")
-
-    # ... inside your Storage class ...
-
-    def sync_results_from_api(self, competition_code: str):
-        """Fetches results from football-data.org and updates the database."""
-        from src.api import FootballAPI
-        api = FootballAPI()
-        matches = api.fetch_finished_matches(competition_code)
+    """Database storage handler for polls and predictions."""
+    
+    def __init__(self, db_path: str = "database.db"):
+        """
+        Initialize storage.
         
-        count = 0
-        for match in matches:
-            match_id = str(match['id'])
+        Args:
+            db_path: Path to SQLite database file
+        """
+        self.db_path = db_path
+        self.conn = None
+        self._initialize_db()
+    
+    def _initialize_db(self):
+        """Initialize database connection and tables."""
+        try:
+            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
             
-            # Use safe get to avoid KeyErrors if API response varies
-            score_info = match.get('score', {})
-            winner_key = score_info.get('winner')
+            # Enable foreign keys
+            self.conn.execute("PRAGMA foreign_keys = ON")
             
-            if winner_key == 'HOME_TEAM':
-                winner_name = match['homeTeam']['name']
-            elif winner_key == 'AWAY_TEAM':
-                winner_name = match['awayTeam']['name']
-            else:
-                winner_name = 'draw'
-                
-            # Only update if we don't have this result yet
-            if not self.get_match_result(match_id):
-                self.save_match_result(match_id, winner_name)
-                self.update_match_status(match_id, 'completed')
-                count += 1
+            # Create tables if they don't exist
+            self._create_tables()
+            
+            logger.info(f"Database initialized: {self.db_path}")
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            raise
+    
+    def _create_tables(self):
+        """Create necessary database tables."""
+        cursor = self.conn.cursor()
         
-        logger.info(f"Synced {count} new results from API")
-        
-        for match in matches:
-            match_id = str(match['id'])
-            # Determine winner
-            winner = match['score']['winner'] # Returns 'HOME_TEAM', 'AWAY_TEAM', or 'DRAW'
+        try:
+            # Users table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id TEXT PRIMARY KEY,
+                user_name TEXT UNIQUE NOT NULL,
+                email TEXT,
+                country TEXT,
+                registration_date TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
             
-            # Map API winner to your DB format (e.g., team name)
-            if winner == 'HOME_TEAM':
-                winner_name = match['homeTeam']['name']
-            elif winner == 'AWAY_TEAM':
-                winner_name = match['awayTeam']['name']
-            else:
-                winner_name = 'draw'
-                
-            # Save to your database
-            self.save_match_result(match_id, winner_name)
+            # Matches table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS matches (
+                match_id TEXT PRIMARY KEY,
+                team_1 TEXT NOT NULL,
+                team_2 TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                match_date TEXT NOT NULL,
+                kickoff_time TEXT NOT NULL,
+                venue TEXT,
+                status TEXT DEFAULT 'scheduled',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            
+            # Predictions table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS predictions (
+                prediction_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                match_id TEXT NOT NULL,
+                predicted_winner TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                points_earned INTEGER DEFAULT 0,
+                is_processed INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(user_id),
+                FOREIGN KEY(match_id) REFERENCES matches(match_id),
+                UNIQUE(user_id, match_id)
+            )
+            """)
+            
+            # Match results table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS match_results (
+                result_id TEXT PRIMARY KEY,
+                match_id TEXT NOT NULL UNIQUE,
+                actual_winner TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(match_id) REFERENCES matches(match_id)
+            )
+            """)
+            
+            # User stats table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_stats (
+                stat_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE,
+                total_predictions INTEGER DEFAULT 0,
+                correct_predictions INTEGER DEFAULT 0,
+                accuracy_percentage REAL DEFAULT 0.0,
+                total_points INTEGER DEFAULT 0,
+                last_updated TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(user_id)
+            )
+            """)
+            
+            # Leaderboard table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                leaderboard_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE,
+                rank INTEGER NOT NULL,
+                total_predictions INTEGER DEFAULT 0,
+                correct_predictions INTEGER DEFAULT 0,
+                accuracy_percentage REAL DEFAULT 0.0,
+                total_points INTEGER DEFAULT 0,
+                last_updated TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(user_id)
+            )
+            """)
+            
+            # Create indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_predictions_user ON predictions(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_stats ON user_stats(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_rank ON leaderboard(rank)")
+            
+            self.conn.commit()
+            logger.info("Database tables created/verified")
+        
+        except Exception as e:
+            logger.error(f"Error creating tables: {e}")
+            raise
+    
+    # ============ USER METHODS ============
+    
+    def get_or_create_user(self, user_id: str, user_name: str, email: str = "", country: str = "") -> Dict:
+        """
+        Get or create a user.
+        
+        Args:
+            user_id: User ID
+            user_name: Username
+            email: Email address
+            country: Country
+        
+        Returns:
+            User dictionary
+        """
+        try:
+            # Check if user exists
+            user = self.get_user(user_id)
+            if user:
+                return user
+            
+            # Create new user
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            INSERT INTO users (user_id, user_name, email, country, registration_date)
+            VALUES (?, ?, ?, ?, ?)
+            """, (user_id, user_name, email, country, datetime.now(timezone.utc).isoformat()))
+            
+            self.conn.commit()
+            
+            # Create user stats record
+            self._create_user_stats(user_id)
+            
+            logger.info(f"User created: {user_id}")
+            return self.get_user(user_id)
+        
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return None
+    
+    def get_user(self, user_id: str) -> Optional[Dict]:
+        """
+        Get user by ID.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            User dictionary or None
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user: {e}")
+            return None
+    
+    def _create_user_stats(self, user_id: str) -> bool:
+        """Create user stats record."""
+        try:
+            import uuid
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            INSERT OR IGNORE INTO user_stats (stat_id, user_id)
+            VALUES (?, ?)
+            """, (str(uuid.uuid4()), user_id))
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error creating user stats: {e}")
+            return False
+    
+    # ============ MATCH METHODS ============
+    
+    def create_match(self, match_id: str, team_1: str, team_2: str, stage: str,
+                    match_date: str, kickoff_time: str, venue: str = "") -> bool:
+        """
+        Create a new match.
+        
+        Args:
+            match_id: Match ID
+            team_1: First team
+            team_2: Second team
+            stage: Tournament stage
+            match_date: Match date (YYYY-MM-DD)
+            kickoff_time: Kickoff time (HH:MM)
+            venue: Match venue
+        
+        Returns:
+            Success status
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            INSERT OR IGNORE INTO matches 
+            (match_id, team_1, team_2, stage, match_date, kickoff_time, venue, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'scheduled')
+            """, (match_id, team_1, team_2, stage, match_date, kickoff_time, venue))
+            
+            self.conn.commit()
+            logger.info(f"Match created: {team_1} vs {team_2}")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating match: {e}")
+            return False
+    
+    def get_match(self, match_id: str) -> Optional[Dict]:
+        """
+        Get match by ID.
+        
+        Args:
+            match_id: Match ID
+        
+        Returns:
+            Match dictionary or None
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM matches WHERE match_id = ?", (match_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting match: {e}")
+            return None
+    
+    def get_all_matches(self) -> List[Dict]:
+        """
+        Get all matches.
+        
+        Returns:
+            List of match dictionaries
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM matches ORDER BY match_date, kickoff_time")
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting all matches: {e}")
+            return []
+    
+    def get_matches_by_date(self, match_date: str) -> List[Dict]:
+        """
+        Get matches for a specific date.
+        
+        Args:
+            match_date: Date in YYYY-MM-DD format
+        
+        Returns:
+            List of matches for that date
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM matches WHERE match_date = ? ORDER BY kickoff_time",
+                (match_date,)
+            )
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting matches by date: {e}")
+            return []
+    
+    def update_match_status(self, match_id: str, status: str) -> bool:
+        """
+        Update match status.
+        
+        Args:
+            match_id: Match ID
+            status: New status
+        
+        Returns:
+            Success status
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE matches SET status = ? WHERE match_id = ?",
+                (status, match_id)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating match status: {e}")
+            return False
+    
+    # ============ PREDICTION METHODS ============
+    
+    def create_prediction(self, prediction_id: str, user_id: str, match_id: str,
+                         predicted_winner: str, timestamp: str = None) -> bool:
+        """
+        Create a new prediction.
+        
+        Args:
+            prediction_id: Unique prediction ID
+            user_id: User ID
+            match_id: Match ID
+            predicted_winner: Predicted winner
+            timestamp: Prediction timestamp
+        
+        Returns:
+            Success status
+        """
+        try:
+            if timestamp is None:
+                timestamp = datetime.now(timezone.utc).isoformat()
+            
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            INSERT INTO predictions 
+            (prediction_id, user_id, match_id, predicted_winner, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            """, (prediction_id, user_id, match_id, predicted_winner, timestamp))
+            
+            self.conn.commit()
+            
+            logger.info(f"Prediction created: {prediction_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating prediction: {e}")
+            return False
+    
+    def get_prediction(self, match_id: str, user_id: str) -> Optional[Dict]:
+        """
+        Get a specific prediction.
+        
+        Args:
+            match_id: Match ID
+            user_id: User ID
+        
+        Returns:
+            Prediction dictionary or None
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM predictions WHERE match_id = ? AND user_id = ?",
+                (match_id, user_id)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting prediction: {e}")
+            return None
+    
+    def get_user_predictions(self, user_id: str) -> List[Dict]:
+        """
+        Get all predictions for a user.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            List of predictions
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM predictions WHERE user_id = ? ORDER BY timestamp DESC",
+                (user_id,)
+            )
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting user predictions: {e}")
+            return []
+    
+    def get_match_predictions(self, match_id: str) -> List[Dict]:
+        """
+        Get all predictions for a match.
+        
+        Args:
+            match_id: Match ID
+        
+        Returns:
+            List of predictions
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM predictions WHERE match_id = ?",
+                (match_id,)
+            )
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting match predictions: {e}")
+            return []
+    
+    def update_prediction_points(self, prediction_id: str, points: int) -> bool:
+        """
+        Update points for a prediction.
+        
+        Args:
+            prediction_id: Prediction ID
+            points: Points earned
+        
+        Returns:
+            Success status
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE predictions SET points_earned = ?, is_processed = 1 WHERE prediction_id = ?",
+                (points, prediction_id)
+            )
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating prediction points: {e}")
+            return False
+    
+    # ============ RESULT METHODS ============
+    
+    def save_match_result(self, match_id: str, actual_winner: str) -> bool:
+        """
+        Save match result.
+        
+        Args:
+            match_id: Match ID
+            actual_winner: Actual winner
+        
+        Returns:
+            Success status
+        """
+        try:
+            import uuid
+            result_id = str(uuid.uuid4())
+            timestamp = datetime.now(timezone.utc).isoformat()
+            
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            INSERT OR REPLACE INTO match_results 
+            (result_id, match_id, actual_winner, timestamp)
+            VALUES (?, ?, ?, ?)
+            """, (result_id, match_id, actual_winner, timestamp))
+            
+            self.conn.commit()
+            
+            # Update match status
             self.update_match_status(match_id, 'completed')
-        
-        logger.info(f"Synced {len(matches)} results from API")
-
-    # ============ User Management ============
-    def get_or_create_user(self, user_name: str, email: str = "", country: str = "") -> Dict[str, Any]:
-        user = self.db.fetch_one("SELECT * FROM users WHERE user_name = %s", (user_name,))
-        if user:
-            return user
-
-        user_id = str(uuid.uuid4())
-        new_user = {
-            'user_id': user_id,
-            'user_name': user_name,
-            'email': email or f"{user_name}@example.com",
-            'registration_date': str(datetime.datetime.now())
-        }
-        self.db.insert("users", new_user)
-        # Use direct SQL to avoid column name mismatch in db.insert auto-key logic
-        self.db.execute(
-            """INSERT INTO user_stats (stat_id, user_id, total_points, total_predictions,
-               correct_predictions, accuracy_percentage) VALUES (%s, %s, 0, 0, 0, 0.0)""",
-            (str(uuid.uuid4()), user_id)
-        )
-        logger.info(f"Created user: {user_name}")
-        return new_user
-
-    def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
-        return self.db.fetch_one("SELECT * FROM users WHERE user_id = %s", (user_id,))
-
-    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Look up an existing user by email without creating one."""
-        return self.db.fetch_one("SELECT * FROM users WHERE email = %s", (email,))
-
-    def get_or_create_user_by_email(self, email: str, display_name: str = "") -> Dict[str, Any]:
-        """Find existing user by email or create new one. Email is the primary identifier."""
-        user = self.db.fetch_one("SELECT * FROM users WHERE email = %s", (email,))
-        if user:
-            return user
-
-        base_name = display_name.strip() if display_name.strip() else email.split('@')[0]
-        user_name = base_name
-        counter = 1
-        while self.db.fetch_one("SELECT 1 AS x FROM users WHERE user_name = %s", (user_name,)):
-            user_name = f"{base_name}{counter}"
-            counter += 1
-
-        user_id = str(uuid.uuid4())
-        new_user = {
-            'user_id': user_id,
-            'user_name': user_name,
-            'email': email,
-            'registration_date': str(datetime.datetime.now())
-        }
-        self.db.insert("users", new_user)
-        self.db.execute(
-            """INSERT INTO user_stats (stat_id, user_id, total_points, total_predictions,
-               correct_predictions, accuracy_percentage) VALUES (%s, %s, 0, 0, 0, 0.0)""",
-            (str(uuid.uuid4()), user_id)
-        )
-        logger.info(f"Created user: {user_name} ({email})")
-        return new_user
-
-    # ============ Match Management ============
-    def get_all_matches(self) -> List[Dict[str, Any]]:
-        return self.db.fetch_all("SELECT * FROM matches ORDER BY match_datetime ASC")
-
-    def get_match(self, match_id: str) -> Optional[Dict[str, Any]]:
-        return self.db.fetch_one("SELECT * FROM matches WHERE match_id = %s", (match_id,))
-
-    def get_matches_by_status(self, status: str) -> List[Dict[str, Any]]:
-        return self.db.fetch_all("SELECT * FROM matches WHERE status = %s", (status,))
-
-    def update_match_status(self, match_id: str, status: str) -> None:
-        self.db.update("matches", {"status": status}, "match_id = %s", (match_id,))
-
-    def save_match_result(self, match_id: str, winner: str) -> None:
-        """Saves final match result."""
-        # Use result_id as the primary key as per your database schema
-        result_data = {
-            "result_id": str(uuid.uuid4()), 
-            "match_id": match_id,
-            "actual_winner": winner,
-            "result_timestamp": str(datetime.datetime.now())
-        }
-        self.db.insert("match_results", result_data)
-
-    def get_match_result(self, match_id: str) -> Optional[Dict[str, Any]]:
-        return self.db.fetch_one(
-            "SELECT * FROM match_results WHERE match_id = %s", (match_id,)
-        )
-
-    def load_fixtures(self, df) -> None:
-        """Populates fixtures from DataFrame into the database."""
-        for _, row in df.iterrows():
-            match_date = str(row['match_date'])
-            kickoff = str(row['kickoff_time'])
-            # Ensure kickoff_time_ist is correctly pulled from the CSV column
-            kickoff_ist = str(row.get('kickoff_time_ist', kickoff))
             
-            match_data = {
-                'match_id': str(row['match_id']),
-                'team_1': str(row['team_1']),
-                'team_2': str(row['team_2']),
-                'match_date': match_date,
-                'kickoff_time': kickoff,
-                'kickoff_time_ist': kickoff_ist,
-                'match_datetime': f"{match_date} {kickoff}",
-                'stage': str(row['stage']),
-                'venue': str(row['venue']),
-                'status': str(row.get('status', 'scheduled'))
-            }
-            self.db.insert("matches", match_data)
-
-    # ============ Prediction Management ============
-    def save_prediction(self, user_id: str, match_id: str, predicted_winner: str) -> str:
-        pred_id = str(uuid.uuid4())
-        self.db.insert("predictions", {
-            "prediction_id": pred_id,
-            "user_id": user_id,
-            "match_id": match_id,
-            "predicted_winner": predicted_winner,
-            "prediction_timestamp": str(datetime.datetime.now())
-        })
-        return pred_id
-
-    def get_user_predictions(self, user_id: str) -> List[Dict[str, Any]]:
-        return self.db.fetch_all("SELECT * FROM predictions WHERE user_id = %s", (user_id,))
-
-    def get_prediction(self, match_id: str, user_id: str) -> Optional[Dict[str, Any]]:
-        return self.db.fetch_one(
-            "SELECT * FROM predictions WHERE match_id = %s AND user_id = %s",
-            (match_id, user_id)
-        )
-
-    def user_has_predicted(self, user_id: str, match_id: str) -> bool:
-        result = self.db.fetch_one(
-            "SELECT 1 AS exists_flag FROM predictions WHERE user_id = %s AND match_id = %s",
-            (user_id, match_id)
-        )
-        return result is not None
-
-    # ============ Points Management ============
-    def save_points(self, user_id: str, match_id: str, points: int) -> None:
-        is_correct = 1 if points > 0 else 0
-        logger.debug(f"Saving {points} points for user {user_id} on match {match_id}")
-        self.db.execute(
-            """UPDATE user_stats
-               SET total_points = total_points + %s,
-                   total_predictions = total_predictions + 1,
-                   correct_predictions = correct_predictions + %s,
-                   accuracy_percentage = CASE
-                       WHEN (total_predictions + 1) > 0
-                       THEN ROUND((correct_predictions + %s) * 100.0 / (total_predictions + 1), 2)
-                       ELSE 0.0
-                   END
-               WHERE user_id = %s""",
-            (points, is_correct, is_correct, user_id)
-        )
-
-    # ============ User Stats ============
-    def get_user_prediction_count(self, user_id: str) -> int:
-        return self.db.count("predictions", "user_id = %s", (user_id,))
-
-    def get_user_correct_predictions(self, user_id: str) -> int:
-        query = """
-        SELECT COUNT(*) AS count FROM predictions p
-        JOIN match_results mr ON p.match_id = mr.match_id
-        WHERE p.user_id = %s AND p.predicted_winner = mr.actual_winner
+            logger.info(f"Match result saved: {match_id} = {actual_winner}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving match result: {e}")
+            return False
+    
+    def get_match_result(self, match_id: str) -> Optional[Dict]:
         """
-        result = self.db.fetch_one(query, (user_id,))
-        return int(result['count']) if result else 0
-
-    def get_user_total_points(self, user_id: str) -> int:
-        result = self.db.fetch_one(
-            "SELECT total_points FROM user_stats WHERE user_id = %s", (user_id,)
-        )
-        return int(result['total_points']) if result else 0
-
-    def count_table(self, table: str) -> int:
-        return self.db.count(table)
-
-    # ============ Leaderboard Management ============
-    def get_leaderboard(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        query = """
-        SELECT u.user_name, s.total_points, s.accuracy_percentage,
-               s.total_predictions, s.correct_predictions,
-               RANK() OVER (ORDER BY s.total_points DESC) AS rank
-        FROM users u
-        JOIN user_stats s ON u.user_id = s.user_id
-        ORDER BY s.total_points DESC
+        Get match result.
+        
+        Args:
+            match_id: Match ID
+        
+        Returns:
+            Result dictionary or None
         """
-        if limit:
-            query += f" LIMIT {limit}"
-        return self.db.fetch_all(query)
-
-    def get_user_rank(self, user_id: str) -> Optional[Dict[str, Any]]:
-        query = """
-        SELECT * FROM (
-            SELECT s.*, u.user_name,
-                   RANK() OVER (ORDER BY s.total_points DESC) AS rank
-            FROM user_stats s
-            JOIN users u ON s.user_id = u.user_id
-        ) ranked
-        WHERE user_id = %s
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM match_results WHERE match_id = ?",
+                (match_id,)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting match result: {e}")
+            return None
+    
+    # ============ STATS METHODS ============
+    
+    def update_user_stats(self, user_id: str) -> bool:
         """
-        return self.db.fetch_one(query, (user_id,))
+        Update user statistics.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Success status
+        """
+        try:
+            predictions = self.get_user_predictions(user_id)
+            
+            total = len(predictions)
+            correct = 0
+            total_points = 0
+            
+            for pred in predictions:
+                result = self.get_match_result(pred['match_id'])
+                
+                if result:
+                    if result['actual_winner'] == pred['predicted_winner']:
+                        correct += 1
+                        if pred['predicted_winner'] == 'draw':
+                            total_points += 2
+                        else:
+                            total_points += 3
+            
+            accuracy = (correct / total * 100) if total > 0 else 0.0
+            
+            cursor = self.conn.cursor()
+            cursor.execute("""
+            UPDATE user_stats SET 
+                total_predictions = ?,
+                correct_predictions = ?,
+                accuracy_percentage = ?,
+                total_points = ?,
+                last_updated = ?
+            WHERE user_id = ?
+            """, (total, correct, accuracy, total_points, datetime.now(timezone.utc).isoformat(), user_id))
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating user stats: {e}")
+            return False
+    
+    def get_user_stats(self, user_id: str) -> Optional[Dict]:
+        """
+        Get user statistics.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Stats dictionary or None
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM user_stats WHERE user_id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user stats: {e}")
+            return None
+    
+    # ============ LEADERBOARD METHODS ============
+    
+    def refresh_leaderboard(self) -> int:
+        """
+        Refresh leaderboard rankings.
+        
+        Returns:
+            Number of users updated
+        """
+        try:
+            users = self.get_all_users()
+            count = 0
+            
+            for user in users:
+                self.update_user_stats(user['user_id'])
+            
+            # Rebuild leaderboard
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM leaderboard")
+            
+            # Get users sorted by points
+            cursor.execute("""
+            SELECT u.user_id, u.user_name, s.total_predictions, s.correct_predictions, s.accuracy_percentage, s.total_points
+            FROM users u
+            LEFT JOIN user_stats s ON u.user_id = s.user_id
+            WHERE u.status = 'active'
+            ORDER BY s.total_points DESC, s.accuracy_percentage DESC
+            """)
+            
+            rows = cursor.fetchall()
+            
+            import uuid
+            for rank, row in enumerate(rows, 1):
+                cursor.execute("""
+                INSERT INTO leaderboard 
+                (leaderboard_id, user_id, rank, total_predictions, correct_predictions, accuracy_percentage, total_points, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    str(uuid.uuid4()),
+                    row[0],
+                    rank,
+                    row[2] or 0,
+                    row[3] or 0,
+                    row[4] or 0.0,
+                    row[5] or 0,
+                    datetime.now(timezone.utc).isoformat()
+                ))
+            
+            self.conn.commit()
+            logger.info(f"Leaderboard refreshed: {len(rows)} users")
+            return len(rows)
+        except Exception as e:
+            logger.error(f"Error refreshing leaderboard: {e}")
+            return 0
+    
+    def get_leaderboard(self, limit: int = 100) -> List[Dict]:
+        """
+        Get leaderboard.
+        
+        Args:
+            limit: Maximum number of entries
+        
+        Returns:
+            List of leaderboard entries
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM leaderboard ORDER BY rank LIMIT ?",
+                (limit,)
+            )
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting leaderboard: {e}")
+            return []
+    
+    def get_user_rank(self, user_id: str) -> Optional[Dict]:
+        """
+        Get user's leaderboard rank.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Rank entry or None
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT * FROM leaderboard WHERE user_id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                return dict(row)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user rank: {e}")
+            return None
+    
+    # ============ UTILITY METHODS ============
+    
+    def get_all_users(self) -> List[Dict]:
+        """
+        Get all users.
+        
+        Returns:
+            List of users
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE status = 'active'")
+            rows = cursor.fetchall()
+            
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting all users: {e}")
+            return []
+    
+    def close(self):
+        """Close database connection."""
+        if self.conn:
+            self.conn.close()
+            logger.info("Database connection closed")
 
-    # ============ Stats ============
-    def get_tournament_stats(self) -> Dict[str, Any]:
-        return {
-            "Total Users": self.db.count("users"),
-            "Total Matches": self.db.count("matches"),
-            "Total Predictions": self.db.count("predictions"),
-            "Scheduled Matches": self.db.count("matches", "status = %s", ("scheduled",)),
-            "Completed Matches": self.db.count("matches", "status = %s", ("completed",)),
-        }
 
-    def get_database_size(self) -> Dict[str, int]:
-        return {table: self.db.count(table) for table in ["users", "matches", "predictions"]}
+# Global storage instance
+_storage = None
+
+
+def get_storage(db_path: str = "database.db") -> Storage:
+    """
+    Get or create storage instance.
+    
+    Args:
+        db_path: Path to database file
+    
+    Returns:
+        Storage instance
+    """
+    global _storage
+    
+    if _storage is None:
+        _storage = Storage(db_path)
+    
+    return _storage
+
+
+def reset_storage():
+    """Reset storage instance."""
+    global _storage
+    _storage = None
