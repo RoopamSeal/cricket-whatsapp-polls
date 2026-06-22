@@ -111,15 +111,8 @@ try:
 
     # Display matches
     for match in day_matches:
-        # Convert kickoff from EST to IST for display (handles HH:MM and HH:MM:SS)
-        try:
-            kt = str(match['kickoff_time']).strip()
-            fmt = "%Y-%m-%d %H:%M:%S" if len(kt) > 5 else "%Y-%m-%d %H:%M"
-            kickoff_est = datetime.strptime(f"{match['match_date']} {kt}", fmt).replace(tzinfo=EST)
-            kickoff_ist = kickoff_est.astimezone(timezone(IST_OFFSET))
-            kickoff_display = kickoff_ist.strftime('%I:%M %p IST')
-        except Exception:
-            kickoff_display = match.get('kickoff_time_ist', match['kickoff_time']) + " IST"
+        # kickoff_ist is pre-computed by the DB query in storage.get_all_matches()
+        kickoff_display = str(match.get('kickoff_ist', match['kickoff_time'])) + ' IST'
 
         # Check prediction
         pred = storage.get_prediction(match['match_id'], st.session_state.user_id)

@@ -273,17 +273,12 @@ else:
             if active_matches.empty:
                 st.info("No upcoming matches")
             else:
-                active_matches['match_datetime'] = pd.to_datetime(
-                    active_matches['match_datetime'], errors='coerce'
-                ).fillna(pd.to_datetime(
-                    active_matches['match_date'] + ' ' + active_matches['kickoff_time'],
-                    format='mixed', errors='coerce'
-                ))
-                active_matches = active_matches.sort_values('match_datetime')
-                match_dates = sorted(pd.to_datetime(active_matches['match_date']).dt.date.unique())
+                # Sort by match_date and kickoff_time — both are ISO strings, string sort is correct
+                active_matches = active_matches.sort_values(['match_date', 'kickoff_time'])
+                match_dates = sorted(active_matches['match_date'].unique())
 
-                today = date.today()
-                default_date = next((d for d in match_dates if d >= today), match_dates[0])
+                today_str = date.today().isoformat()
+                default_date = next((d for d in match_dates if d >= today_str), match_dates[0])
 
                 if 'home_match_date' not in st.session_state or st.session_state.home_match_date not in match_dates:
                     st.session_state.home_match_date = default_date
@@ -296,47 +291,38 @@ else:
                         st.session_state.home_match_date = match_dates[current_idx - 1]
                         st.rerun()
                 with col_date:
-                    chosen = st.date_input(
-                        "Match Date",
-                        value=st.session_state.home_match_date,
-                        min_value=match_dates[0],
-                        max_value=match_dates[-1],
-                        key="home_date_picker",
-                        label_visibility="collapsed",
+                    st.markdown(
+                        f"<p style='text-align:center; font-size:1.1rem; font-weight:700; color:#1a472a; margin:0;'>"
+                        f"📅 {st.session_state.home_match_date}</p>",
+                        unsafe_allow_html=True
                     )
-                    if chosen != st.session_state.home_match_date:
-                        nearest = min(match_dates, key=lambda d: abs((d - chosen).days))
-                        st.session_state.home_match_date = nearest
-                        st.rerun()
                 with col_next:
                     if st.button("Next ▶", use_container_width=True, disabled=(current_idx >= len(match_dates) - 1)):
                         st.session_state.home_match_date = match_dates[current_idx + 1]
                         st.rerun()
 
                 selected_date = st.session_state.home_match_date
-                day_matches = active_matches[
-                    pd.to_datetime(active_matches['match_date']).dt.date == selected_date
-                ]
+                day_matches = active_matches[active_matches['match_date'] == selected_date]
 
                 st.markdown(
                     f"<p style='color:#666; margin:0.5rem 0 1rem;'>📋 <strong>{len(day_matches)}</strong> match(es) on "
-                    f"<strong>{selected_date.strftime('%B %d, %Y')}</strong></p>",
+                    f"<strong>{selected_date}</strong></p>",
                     unsafe_allow_html=True,
                 )
 
                 if day_matches.empty:
-                    st.info(f"No matches on {selected_date.strftime('%B %d, %Y')}. Try another date.")
+                    st.info(f"No matches on {selected_date}. Try another date.")
                 else:
                     for _, match in day_matches.iterrows():
-                        match_datetime_us = pd.to_datetime(f"{match['match_date']} {match['kickoff_time']}")
-                        match_datetime_ist = match_datetime_us + pd.Timedelta(hours=9, minutes=30)
+                        # kickoff_ist and match_date_ist come pre-computed from the DB query
+                        kickoff_display = match.get('kickoff_ist', match['kickoff_time']) + ' IST'
                         st.markdown(f"""
 <div class="match-card">
 <div style="display:grid; grid-template-columns:2fr 1fr 2fr 1.5fr; gap:1rem; align-items:center;">
 <div style="text-align:right;"><h4 style="color:#1a472a; margin:0; font-size:1.1rem; font-weight:700;">{match['team_1']}</h4></div>
 <div style="text-align:center;"><span style="background:#ffb81c; color:#1a472a; padding:0.5rem 0.8rem; border-radius:0.4rem; font-weight:700; font-size:0.85rem;">vs</span></div>
 <div style="text-align:left;"><h4 style="color:#1a472a; margin:0; font-size:1.1rem; font-weight:700;">{match['team_2']}</h4></div>
-<div style="text-align:center;"><p style="color:#666; margin:0; font-size:0.9rem;">📅 {match_datetime_ist.strftime('%b %d')}<br>🕐 {match_datetime_ist.strftime('%H:%M')} IST<br>📍 {match['venue']}</p></div>
+<div style="text-align:center;"><p style="color:#666; margin:0; font-size:0.9rem;">📅 {match.get('match_date_ist', match['match_date'])}<br>🕐 {kickoff_display}<br>📍 {match['venue']}</p></div>
 </div>
 <div style="margin-top:0.8rem; padding-top:0.8rem; border-top:1px solid #e0e0e0;"><span style="background:#e53238; color:white; padding:0.3rem 0.6rem; border-radius:0.3rem; font-size:0.8rem; font-weight:600;">{match['stage']}</span></div>
 </div>

@@ -71,7 +71,19 @@ class Storage:
     # ── Matches ────────────────────────────────────────────────────────────
 
     def get_all_matches(self) -> List[Dict]:
-        return self.db.fetch_all("SELECT * FROM matches ORDER BY match_date, kickoff_time")
+        return self.db.fetch_all("""
+            SELECT *,
+                to_char(
+                    (match_date::date + kickoff_time::time) + interval '9 hours 30 minutes',
+                    'HH12:MI AM'
+                ) AS kickoff_ist,
+                to_char(
+                    (match_date::date + kickoff_time::time) + interval '9 hours 30 minutes',
+                    'YYYY-MM-DD'
+                ) AS match_date_ist
+            FROM matches
+            ORDER BY match_date, kickoff_time
+        """)
 
     def get_match(self, match_id: str) -> Optional[Dict]:
         return self.db.fetch_one("SELECT * FROM matches WHERE match_id = %s", (match_id,))
