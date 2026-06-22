@@ -182,7 +182,9 @@ class Storage:
 
     def get_leaderboard(self, limit: Optional[int] = None) -> List[Dict]:
         query = """
-        SELECT u.user_name, s.total_points, s.accuracy_percentage,
+        SELECT u.user_id, u.user_name, s.total_points,
+               s.accuracy_percentage,
+               s.accuracy_percentage AS accuracy,
                s.total_predictions, s.correct_predictions,
                RANK() OVER (ORDER BY s.total_points DESC) AS rank
         FROM users u
@@ -203,6 +205,15 @@ class Storage:
             ) ranked WHERE user_id = %s""",
             (user_id,)
         )
+
+    def get_tournament_stats(self) -> Dict:
+        return {
+            'Total Users':       self.count_table('users'),
+            'Total Matches':     self.count_table('matches'),
+            'Scheduled Matches': int((self.db.fetch_one("SELECT COUNT(*) AS cnt FROM matches WHERE status = 'scheduled'") or {}).get('cnt', 0)),
+            'Completed Matches': int((self.db.fetch_one("SELECT COUNT(*) AS cnt FROM matches WHERE status = 'completed'") or {}).get('cnt', 0)),
+            'Total Predictions': self.count_table('predictions'),
+        }
 
     # ── API Sync ───────────────────────────────────────────────────────────
 

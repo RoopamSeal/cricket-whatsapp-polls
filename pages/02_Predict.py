@@ -52,72 +52,99 @@ except Exception as e:
     st.stop()
 
 try:
+    from datetime import timezone, timedelta
+
+    # Current time in EST (UTC-5) and IST offset
+    EST = timezone(timedelta(hours=-5))
+    IST_OFFSET = timedelta(hours=9, minutes=30)
+    now_est = datetime.now(EST)
+    today_est_str = now_est.strftime('%Y-%m-%d')
+    now_est_time = now_est.strftime('%H:%M:%S')
+
     # Get matches
     matches = storage.get_all_matches()
-    
+
     if not matches:
         st.warning("📭 No matches in database")
         st.stop()
-    
-    # Filter active
-    active = [m for m in matches if m.get('status', '').lower() == 'scheduled']
-    
+
+    # Filter: scheduled AND kickoff has not yet passed in EST
+    def is_upcoming(m):
+        d = m.get('match_date', '')
+        t = m.get('kickoff_time', '00:00:00')
+        if m.get('status', '').lower() != 'scheduled':
+            return False
+        if d > today_est_str:
+            return True
+        if d == today_est_str and t >= now_est_time:
+            return True
+        return False
+
+    active = [m for m in matches if is_upcoming(m)]
+
     if not active:
-        st.info("⏰ No upcoming matches")
+        st.info("⏰ No upcoming matches available for prediction")
         st.stop()
-    
+
     # Get dates
     dates = sorted(set(m['match_date'] for m in active))
-    
+
     # Date selector
     selected_date = st.selectbox(
-        "Select Date",
+        "Select Date (EST)",
         dates,
         format_func=lambda d: pd.to_datetime(d).strftime('%B %d, %Y')
     )
-    
+
     # Get matches for date
     day_matches = [m for m in active if m['match_date'] == selected_date]
-    
+
     if not day_matches:
         st.info("No matches on this date")
         st.stop()
-    
+
     # Display count
     st.subheader(f"📋 {len(day_matches)} Matches on {pd.to_datetime(selected_date).strftime('%B %d, %Y')}")
-    
     st.markdown("")
-    
+
     # Display matches
     for match in day_matches:
+        # Convert kickoff from EST to IST for display
+        try:
+            kickoff_est = datetime.strptime(
+                f"{match['match_date']} {match['kickoff_time']}", "%Y-%m-%d %H:%M:%S"
+            ).replace(tzinfo=EST)
+            kickoff_ist = kickoff_est.astimezone(timezone(IST_OFFSET))
+            kickoff_display = kickoff_ist.strftime('%I:%M %p IST')
+        except Exception:
+            kickoff_display = match['kickoff_time'] + " IST"
+
         # Check prediction
         pred = storage.get_prediction(match['match_id'], st.session_state.user_id)
-        
+
         # Colors
         if pred:
             bg = "#e8f5e9"
-            border = "#4caf50"
             status = "✅ PREDICTED"
             status_color = "#4caf50"
         else:
             bg = "#e2e8f0"
-            border = "#ffb81c"
             status = "🎯 OPEN"
             status_color = "#ffb81c"
-        
+
         # Card
         col1, col2, col3 = st.columns([2, 1, 2])
-        
+
         with col1:
             st.write(f"**{match['team_1']}**")
-        
+
         with col2:
             st.write("**vs**")
-        
+
         with col3:
             st.write(f"**{match['team_2']}**")
-        
-        st.caption(f"📅 {match['match_date']} | 🕐 {match['kickoff_time']} IST | {match['stage']}")
+
+        st.caption(f"📅 {pd.to_datetime(selected_date).strftime('%B %d, %Y')} | 🕐 {kickoff_display} | {match['stage']}")
         
         # Prediction
         if pred:
