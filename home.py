@@ -279,32 +279,18 @@ else:
             else:
                 # Sort by match_date and kickoff_time — both are ISO strings, string sort is correct
                 active_matches = active_matches.sort_values(['match_date', 'kickoff_time'])
-                match_dates = sorted(active_matches['match_date'].unique())
+                match_dates = sorted(str(d) for d in active_matches['match_date'].unique())
 
-                default_date = next((d for d in match_dates if d >= today_str), match_dates[0])
+                default_idx = next(
+                    (i for i, d in enumerate(match_dates) if d >= today_str), 0
+                )
 
-                if 'home_match_date' not in st.session_state or st.session_state.home_match_date not in match_dates:
-                    st.session_state.home_match_date = default_date
-
-                col_prev, col_date, col_next = st.columns([1, 4, 1])
-                current_idx = match_dates.index(st.session_state.home_match_date)
-
-                with col_prev:
-                    if st.button("◀ Prev", use_container_width=True, disabled=(current_idx == 0)):
-                        st.session_state.home_match_date = match_dates[current_idx - 1]
-                        st.rerun()
-                with col_date:
-                    st.markdown(
-                        f"<p style='text-align:center; font-size:1.1rem; font-weight:700; color:#1a472a; margin:0;'>"
-                        f"📅 {st.session_state.home_match_date}</p>",
-                        unsafe_allow_html=True
-                    )
-                with col_next:
-                    if st.button("Next ▶", use_container_width=True, disabled=(current_idx >= len(match_dates) - 1)):
-                        st.session_state.home_match_date = match_dates[current_idx + 1]
-                        st.rerun()
-
-                selected_date = st.session_state.home_match_date
+                selected_date = st.selectbox(
+                    "📅 Select Match Date",
+                    match_dates,
+                    index=default_idx,
+                    format_func=lambda d: pd.to_datetime(d).strftime('%B %d, %Y')
+                )
                 day_matches = active_matches[active_matches['match_date'] == selected_date]
 
                 st.markdown(
