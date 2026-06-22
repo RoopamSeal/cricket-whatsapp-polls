@@ -271,6 +271,13 @@ else:
         else:
             IST = timezone(timedelta(hours=5, minutes=30))
             today_ist_str = datetime.now(IST).strftime('%Y-%m-%d')
+
+            # Ensure match_date_ist exists — fallback to match_date if SQL column is absent
+            if 'match_date_ist' not in matches_df.columns:
+                matches_df['match_date_ist'] = matches_df['match_date']
+            if 'kickoff_time_ist' not in matches_df.columns:
+                matches_df['kickoff_time_ist'] = matches_df['kickoff_time']
+
             active_matches = matches_df[
                 matches_df['status'].isin(['scheduled', 'live']) &
                 (matches_df['match_date_ist'].astype(str) >= today_ist_str)

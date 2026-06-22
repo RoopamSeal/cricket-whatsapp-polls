@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @st.cache_resource
-def get_storage(_version: int = 5) -> "Storage":
+def get_storage(_version: int = 6) -> "Storage":
     """Single cached Storage instance shared across all pages and reruns.
     Bump _version to invalidate the Streamlit cache after code changes.
     """
