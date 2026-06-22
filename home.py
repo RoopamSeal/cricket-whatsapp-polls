@@ -377,8 +377,9 @@ else:
         col1, col2, col3, col4 = st.columns(4)
         predictions = storage.get_user_prediction_count(st.session_state.user_id)
         correct = storage.get_user_correct_predictions(st.session_state.user_id)
-        accuracy = (correct / predictions * 100) if predictions > 0 else 0
         points = storage.get_user_total_points(st.session_state.user_id)
+        resolved = storage.get_user_resolved_prediction_count(st.session_state.user_id)
+        accuracy = (correct / resolved * 100) if resolved > 0 else 0
         with col1:
             st.metric("🎯 Predictions", predictions)
         with col2:
