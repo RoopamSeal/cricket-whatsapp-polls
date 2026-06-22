@@ -12,9 +12,6 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Leaderboard", layout="wide")
 
-# Auto-refresh every 5 seconds
-st.set_page_config(page_title="Leaderboard", layout="wide")
-
 st.markdown("""
 <h1 style="text-align: center;">🏆 GLOBAL LEADERBOARD</h1>
 """, unsafe_allow_html=True)
