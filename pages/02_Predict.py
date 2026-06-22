@@ -1,12 +1,13 @@
 """
 Predict page - Make predictions on matches.
+Predictions are only open for TODAY's matches (EST date).
+Future-date matches are locked — predict on the day they are played.
 """
 
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime, timedelta
+from datetime import datetime, timezone, timedelta
 import logging
-import uuid
 
 # ==========================================
 # SESSION STATE INITIALIZATION
@@ -26,37 +27,30 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Predict", layout="wide")
 
-# Session state
 if 'user_id' not in st.session_state:
     st.session_state.user_id = None
 if 'user_name' not in st.session_state:
     st.session_state.user_name = None
 
-# Header
 st.markdown("""
 <h1 style="text-align: center;">🎯 MAKE YOUR PREDICTIONS</h1>
 <p style="text-align: center; color: #e53238; font-size: 1rem;">
-    Choose the winner before the match starts and earn points!
+    Predict today's matches before kickoff and earn points!
 </p>
 """, unsafe_allow_html=True)
 
 st.markdown("---")
 
-# Auth check
 if st.session_state.user_id is None:
     st.warning("⚠️ You are not logged in.")
     st.info("👈 Please go to **Home** to log in.")
     st.stop()
 
-# Info
-st.info("⏰ **All times in IST (Indian Standard Time)**")
-
-# Import
 try:
     from src.storage import get_storage
     from src.predictions import PredictionManager
     from src.config import Config
-    
+
     config = Config()
     storage = get_storage()
     pred_manager = PredictionManager(config, storage)
@@ -65,158 +59,94 @@ except Exception as e:
     st.stop()
 
 try:
-    from datetime import timezone, timedelta
-
-    # Current time in EST (UTC-5) and IST offset
+    # "Today" is determined by EST (UTC-5) — the timezone of the host nations
     EST = timezone(timedelta(hours=-5))
-    IST_OFFSET = timedelta(hours=9, minutes=30)
-    now_est = datetime.now(EST)
-    today_est_str = now_est.strftime('%Y-%m-%d')
-    now_est_time = now_est.strftime('%H:%M:%S')
+    now_est      = datetime.now(EST)
+    today_est    = now_est.strftime('%Y-%m-%d')   # e.g. '2026-06-22'
+    now_est_time = now_est.strftime('%H:%M:%S')   # e.g. '14:30:00'
 
-    # Get matches
+    st.info(f"⏰ Predictions open for **{now_est.strftime('%B %d, %Y')}** matches only (EST). Times shown in IST.")
+
     matches = storage.get_all_matches()
 
     if not matches:
         st.warning("📭 No matches in database")
         st.stop()
 
-    # Filter: scheduled AND kickoff has not yet passed in EST
-    def is_upcoming(m):
-        d = m.get('match_date', '')
-        t = str(m.get('kickoff_time', '00:00')).strip()
-        if len(t) == 5:   # HH:MM → HH:MM:SS
-            t += ':00'
+    # Only today's scheduled matches that haven't kicked off yet (EST)
+    def is_today_and_upcoming(m):
         if m.get('status', '').lower() != 'scheduled':
             return False
-        if d > today_est_str:
-            return True
-        if d == today_est_str and t >= now_est_time:
-            return True
-        return False
+        d = str(m.get('match_date', ''))
+        t = str(m.get('kickoff_time', '00:00')).strip()
+        if len(t) == 5:       # HH:MM → HH:MM:SS
+            t += ':00'
+        return d == today_est and t >= now_est_time
 
-    active = [m for m in matches if is_upcoming(m)]
+    today_matches = [m for m in matches if is_today_and_upcoming(m)]
 
-    if not active:
-        st.info("⏰ No upcoming matches available for prediction")
+    if not today_matches:
+        st.info(
+            f"⏰ No more matches left to predict for today ({now_est.strftime('%B %d, %Y')} EST). "
+            f"Come back tomorrow!"
+        )
         st.stop()
 
-    # Get dates
-    dates = sorted(set(m['match_date'] for m in active))
-
-    # Date selector
-    selected_date = st.selectbox(
-        "Select Date (EST)",
-        dates,
-        format_func=lambda d: pd.to_datetime(d).strftime('%B %d, %Y')
-    )
-
-    # Get matches for date
-    day_matches = [m for m in active if m['match_date'] == selected_date]
-
-    if not day_matches:
-        st.info("No matches on this date")
-        st.stop()
-
-    # Display count
-    st.subheader(f"📋 {len(day_matches)} Matches on {pd.to_datetime(selected_date).strftime('%B %d, %Y')}")
+    st.subheader(f"📋 {len(today_matches)} match(es) available today")
     st.markdown("")
 
-    # Display matches
-    for match in day_matches:
-        # kickoff_ist is pre-computed by the DB query in storage.get_all_matches()
-        kickoff_display = str(match.get('kickoff_ist', match['kickoff_time'])) + ' IST'
+    for match in today_matches:
+        # kickoff_time_ist stored in DB (HH:MM 24-hour IST) — no Python computation
+        kickoff_display = str(match.get('kickoff_time_ist', match['kickoff_time'])) + ' IST'
 
-        # Check prediction
         pred = storage.get_prediction(match['match_id'], st.session_state.user_id)
 
-        # Colors
-        if pred:
-            bg = "#e8f5e9"
-            status = "✅ PREDICTED"
-            status_color = "#4caf50"
-        else:
-            bg = "#e2e8f0"
-            status = "🎯 OPEN"
-            status_color = "#ffb81c"
+        col_a, col_b = st.columns([3, 1])
+        with col_a:
+            st.markdown(
+                f"**{match['team_1']}** vs **{match['team_2']}**  \n"
+                f"🕐 {kickoff_display} &nbsp;|&nbsp; {match['stage']}"
+            )
+        with col_b:
+            if pred:
+                st.success(f"✅ {pred['predicted_winner']}")
 
-        # Card
-        col1, col2, col3 = st.columns([2, 1, 2])
-
-        with col1:
-            st.write(f"**{match['team_1']}**")
-
-        with col2:
-            st.write("**vs**")
-
-        with col3:
-            st.write(f"**{match['team_2']}**")
-
-        st.caption(f"📅 {pd.to_datetime(selected_date).strftime('%B %d, %Y')} | 🕐 {kickoff_display} | {match['stage']}")
-        
-        # Prediction
-        if pred:
-            st.success(f"✅ Your prediction: **{pred['predicted_winner']}**")
-        else:
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button(
-                    f"🎯 {match['team_1']}",
-                    key=f"p_{match['match_id']}_1",
-                    use_container_width=True
-                ):
-                    success, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id,
-                        match['match_id'],
-                        match['team_1']
+        if not pred:
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                if st.button(f"🎯 {match['team_1']}", key=f"p_{match['match_id']}_1", use_container_width=True):
+                    ok, msg, _ = pred_manager.make_prediction(
+                        st.session_state.user_id, match['match_id'], match['team_1']
                     )
-                    
-                    if success:
+                    if ok:
                         st.success("✅ Prediction saved!")
                         st.balloons()
                         st.rerun()
                     else:
                         st.error(f"Error: {msg}")
-            
-            with col2:
-                if st.button(
-                    "🤝 DRAW",
-                    key=f"p_{match['match_id']}_draw",
-                    use_container_width=True
-                ):
-                    success, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id,
-                        match['match_id'],
-                        'draw'
+            with c2:
+                if st.button("🤝 DRAW", key=f"p_{match['match_id']}_draw", use_container_width=True):
+                    ok, msg, _ = pred_manager.make_prediction(
+                        st.session_state.user_id, match['match_id'], 'draw'
                     )
-                    
-                    if success:
+                    if ok:
                         st.success("✅ Prediction saved!")
                         st.balloons()
                         st.rerun()
                     else:
                         st.error(f"Error: {msg}")
-            
-            with col3:
-                if st.button(
-                    f"🎯 {match['team_2']}",
-                    key=f"p_{match['match_id']}_2",
-                    use_container_width=True
-                ):
-                    success, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id,
-                        match['match_id'],
-                        match['team_2']
+            with c3:
+                if st.button(f"🎯 {match['team_2']}", key=f"p_{match['match_id']}_2", use_container_width=True):
+                    ok, msg, _ = pred_manager.make_prediction(
+                        st.session_state.user_id, match['match_id'], match['team_2']
                     )
-                    
-                    if success:
+                    if ok:
                         st.success("✅ Prediction saved!")
                         st.balloons()
                         st.rerun()
                     else:
                         st.error(f"Error: {msg}")
-        
+
         st.markdown("---")
 
 except Exception as e:
