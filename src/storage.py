@@ -287,40 +287,35 @@ class Storage:
     
     # ============ LEADERBOARD & ADMIN ============
     def get_leaderboard(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        query = """
-        SELECT
-            u.user_id,
-            u.user_name,
-            COUNT(p.prediction_id) as total_predictions,
-            COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) as correct_predictions,
-            COALESCE(SUM(
-                CASE
-                    WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
-                    WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
-                    ELSE 0
-                END
-            ), 0) as total_points,
-            ROW_NUMBER() OVER (
-                ORDER BY COALESCE(SUM(
+        limit_clause = f"LIMIT {int(limit)}" if limit else ""
+        query = f"""
+        WITH aggregated AS (
+            SELECT
+                u.user_id,
+                u.user_name,
+                COUNT(p.prediction_id) AS total_predictions,
+                COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) AS correct_predictions,
+                COALESCE(SUM(
                     CASE
                         WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
                         WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
                         ELSE 0
                     END
-                ), 0) DESC,
-                COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) DESC,
-                COUNT(p.prediction_id) DESC,
-                u.user_name ASC
-            ) as rank
-        FROM users u
-        LEFT JOIN predictions p ON u.user_id = p.user_id
-        LEFT JOIN match_results r ON p.match_id = r.match_id
-        GROUP BY u.user_id, u.user_name
-        ORDER BY total_points DESC, correct_predictions DESC, total_predictions DESC, u.user_name ASC
+                ), 0) AS total_points
+            FROM users u
+            LEFT JOIN predictions p ON u.user_id = p.user_id
+            LEFT JOIN match_results r ON p.match_id = r.match_id
+            GROUP BY u.user_id, u.user_name
+        )
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                ORDER BY total_points DESC, correct_predictions DESC, total_predictions DESC, user_name ASC
+            ) AS rank
+        FROM aggregated
+        ORDER BY total_points DESC, correct_predictions DESC, total_predictions DESC, user_name ASC
+        {limit_clause}
         """
-        if limit:
-            query += f" LIMIT {limit}"
-            
         results = self.db.fetch_all(query)
         for row in results:
             total = row['total_predictions']
@@ -332,37 +327,33 @@ class Storage:
         """Gets the specific rank and stats for a single user using a Common Table Expression (CTE)."""
         try:
             query = """
-            WITH RankedUsers AS (
+            WITH aggregated AS (
                 SELECT
                     u.user_id,
                     u.user_name,
-                    COUNT(p.prediction_id) as total_predictions,
-                    COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) as correct_predictions,
+                    COUNT(p.prediction_id) AS total_predictions,
+                    COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) AS correct_predictions,
                     COALESCE(SUM(
                         CASE
                             WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
                             WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
                             ELSE 0
                         END
-                    ), 0) as total_points,
-                    ROW_NUMBER() OVER (
-                        ORDER BY COALESCE(SUM(
-                            CASE
-                                WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
-                                WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
-                                ELSE 0
-                            END
-                        ), 0) DESC,
-                        COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) DESC,
-                        COUNT(p.prediction_id) DESC,
-                        u.user_name ASC
-                    ) as player_rank
+                    ), 0) AS total_points
                 FROM users u
                 LEFT JOIN predictions p ON u.user_id = p.user_id
                 LEFT JOIN match_results r ON p.match_id = r.match_id
                 GROUP BY u.user_id, u.user_name
+            ),
+            ranked AS (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER (
+                        ORDER BY total_points DESC, correct_predictions DESC, total_predictions DESC, user_name ASC
+                    ) AS player_rank
+                FROM aggregated
             )
-            SELECT * FROM RankedUsers WHERE user_id = %s
+            SELECT * FROM ranked WHERE user_id = %s
             """
             row = self.db.fetch_one(query, (user_id,))
             
