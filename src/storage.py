@@ -46,7 +46,15 @@ class Storage:
             self.db.insert("matches", match_data)
 
     def get_all_matches(self) -> List[Dict[str, Any]]:
-        return self.db.fetch_all("SELECT * FROM matches ORDER BY match_date, kickoff_time")
+        return self.db.fetch_all("""
+            SELECT *,
+                to_char(
+                    (match_date::date + kickoff_time::time) + interval '9 hours 30 minutes',
+                    'YYYY-MM-DD'
+                ) AS match_date_ist
+            FROM matches
+            ORDER BY match_date, kickoff_time
+        """)
 
     def get_match(self, match_id: str) -> Optional[Dict[str, Any]]:
         return self.db.fetch_one("SELECT * FROM matches WHERE match_id = %s", (match_id,))
@@ -80,19 +88,22 @@ class Storage:
             return user
 
         user_id = str(uuid.uuid4())
-        user_name = display_name or email.split('@')[0]
-        ab_group = st.session_state.get('ab_group', 'control')
-        
-        new_user = {
-            'user_id': user_id,
-            'user_name': user_name,
-            'email': email,
-            'country': country,
-            'experiment_group': ab_group,
-            'created_at': datetime.datetime.now().isoformat()
-        }
-        self.db.insert("users", new_user)
-        return new_user
+        # Deduplicate display name
+        base = display_name.strip() if display_name.strip() else email.split('@')[0]
+        user_name = base
+        counter = 1
+        while self.db.fetch_one("SELECT 1 AS x FROM users WHERE user_name = %s", (user_name,)):
+            user_name = f"{base}{counter}"
+            counter += 1
+
+        self.db.execute(
+            "INSERT INTO users (user_id, user_name, email, registration_date) VALUES (%s, %s, %s, %s)",
+            (user_id, user_name, email, str(datetime.datetime.now()))
+        )
+        return self.db.fetch_one("SELECT * FROM users WHERE user_id = %s", (user_id,))
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        return self.db.fetch_one("SELECT * FROM users WHERE email = %s", (email,))
 
     # ============ PREDICTION METHODS ============
     def create_prediction(self, prediction_id: str, user_id: str, match_id: str, predicted_winner: str, timestamp: str = None) -> bool:
@@ -358,6 +369,8 @@ class Storage:
             "Total Users": self.db.count("users"),
             "Total Matches": self.db.count("matches"),
             "Total Predictions": self.db.count("predictions"),
-            "Scheduled Matches": self.db.count("matches", "status = %s", ("scheduled",)),
+            "Scheduled Matches": int((self.db.fetch_one(
+                "SELECT COUNT(*) AS cnt FROM matches WHERE status = 'scheduled' AND match_date >= CURRENT_DATE::text"
+            ) or {}).get('cnt', 0)),
             "Completed Matches": self.db.count("matches", "status = %s", ("completed",)),
         }
