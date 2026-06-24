@@ -91,6 +91,109 @@ with tab3:
             st.success(f"✅ Synced! {updated} result(s) updated.")
         except Exception as e:
             st.error(f"Sync failed: {e}")
+
+    # ==========================================
+    # EMAIL REMINDERS
+    # ==========================================
+    
+    st.markdown("---")
+    st.markdown("### 📨 Email Reminder Center")
+    
+    col1, col2 = st.columns(2)
+    
+    # DAILY REMINDER
+    with col1:
+    
+        st.markdown("""
+        <div style="
+            padding:18px;
+            border-radius:12px;
+            background:#173F35;
+            color:white;
+            text-align:center;
+        ">
+            <h4>⚽ Daily Reminder</h4>
+            <p>Send one reminder to users today</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+        if st.button(
+            "📩 Send Daily Reminder",
+            width="stretch",
+            type="primary"
+        ):
+    
+            try:
+    
+                with st.spinner(
+                    "Sending reminders..."
+                ):
+    
+                    count = (
+                        service
+                        .send_daily_reminders()
+                    )
+    
+                st.success(
+                    f"✅ {count} user(s) notified"
+                )
+    
+            except Exception as e:
+    
+                st.error(
+                    f"Email failed: {e}"
+                )
+    
+    
+    # ADMIN BLAST
+    with col2:
+    
+        st.markdown("""
+        <div style="
+            padding:18px;
+            border-radius:12px;
+            background:#E53238;
+            color:white;
+            text-align:center;
+        ">
+            <h4>🚨 Admin Blast</h4>
+            <p>Force send reminder to everyone</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+        if st.button(
+            "📢 Send To ALL Users",
+            width="stretch"
+        ):
+    
+            confirm = st.checkbox(
+                "Confirm admin blast"
+            )
+    
+            if confirm:
+    
+                try:
+    
+                    with st.spinner(
+                        "Sending..."
+                    ):
+    
+                        count = (
+                            service
+                            .send_admin_blast()
+                        )
+    
+                    st.success(
+                        f"🚀 Sent to {count} users"
+                    )
+    
+                except Exception as e:
+    
+                    st.error(
+                        str(e)
+                    )
+    
+    st.markdown("---")
         
     if st.button("🔴 RESET ALL TABLES (DANGER)", use_container_width=True):
         if st.checkbox("I am absolutely sure"):
