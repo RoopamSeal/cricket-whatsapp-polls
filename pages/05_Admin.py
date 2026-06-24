@@ -5,9 +5,11 @@ import streamlit as st
 import pandas as pd
 from src.config import Config
 from src.storage import get_storage
+from src.email_service import EmailService
 
 config = Config()
 storage = get_storage()
+service = EmailService()
 
 st.markdown("""
 <h1 style="text-align: center;">⚙️ ADMIN CONSOLE</h1>
@@ -82,24 +84,162 @@ with tab2:
         st.info("No scheduled matches available.")
 
 # ========== TAB 3: Maintenance ==========
+# ========== TAB 3: Maintenance ==========
 with tab3:
+
     st.markdown("## 🔧 Maintenance")
 
-    if st.button("🔄 Sync Results from API"):
+    # -----------------------------
+    # RESULT SYNC
+    # -----------------------------
+    st.markdown("### 📡 Match Data")
+
+    if st.button(
+        "🔄 Sync Results from API",
+        key="sync_results",
+        use_container_width=True
+    ):
         try:
             updated = storage.sync_results_from_api("WC")
-            st.success(f"✅ Synced! {updated} result(s) updated.")
+
+            st.success(
+                f"✅ Synced successfully ({updated} updated)"
+            )
+
         except Exception as e:
             st.error(f"Sync failed: {e}")
-        
-    if st.button("🔴 RESET ALL TABLES (DANGER)", use_container_width=True):
-        if st.checkbox("I am absolutely sure"):
+
+    st.markdown("---")
+
+    # =============================
+    # EMAIL REMINDERS SECTION
+    # =============================
+
+    st.markdown("""
+    <div style="
+        background:linear-gradient(
+            135deg,
+            #1a472a,
+            #14532d
+        );
+        padding:20px;
+        border-radius:18px;
+        margin-bottom:20px;
+        color:white;
+    ">
+        <h3>📧 Email Reminder Center</h3>
+        <p>
+        Send prediction reminders to all registered users.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        if st.button(
+            "📨 Send Reminder Now",
+            key="manual_email",
+            use_container_width=True,
+            type="primary"
+        ):
+
+            with st.spinner(
+                "Sending reminder emails..."
+            ):
+
+                try:
+
+                    sent = service.send_daily_reminders()
+
+                    st.success(
+                        f"✅ Sent to {sent} users"
+                    )
+
+                except Exception as e:
+
+                    st.error(
+                        f"Email failed: {str(e)}"
+                    )
+
+    with col2:
+
+        if st.button(
+            "🧪 Send Test Email",
+            key="test_email",
+            use_container_width=True
+        ):
+
             try:
-                # Direct SQL to clear data
-                storage.db.execute("DELETE FROM predictions")
-                storage.db.execute("DELETE FROM match_results")
-                storage.db.execute("DELETE FROM user_stats")
-                storage.db.execute("UPDATE matches SET status = 'scheduled'")
-                st.success("✅ All data wiped except matches.")
+
+                admin_email = storage.db.fetch_one("""
+                    SELECT email
+                    FROM users
+                    WHERE email IS NOT NULL
+                    LIMIT 1
+                """)
+
+                if admin_email:
+
+                    service.send_test_email(
+                        admin_email["email"]
+                    )
+
+                    st.success(
+                        f"Test sent → {admin_email['email']}"
+                    )
+
+                else:
+                    st.warning(
+                        "No user email found"
+                    )
+
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(str(e))
+
+    st.markdown("---")
+
+    # -----------------------------
+    # RESET
+    # -----------------------------
+    st.markdown("### ⚠️ Dangerous Actions")
+
+    confirm = st.checkbox(
+        "I understand this deletes prediction data"
+    )
+
+    if st.button(
+        "🔴 RESET ALL TABLES",
+        use_container_width=True,
+        disabled=not confirm
+    ):
+
+        try:
+
+            storage.db.execute(
+                "DELETE FROM predictions"
+            )
+
+            storage.db.execute(
+                "DELETE FROM match_results"
+            )
+
+            storage.db.execute(
+                "DELETE FROM user_stats"
+            )
+
+            storage.db.execute(
+                """
+                UPDATE matches
+                SET status='scheduled'
+                """
+            )
+
+            st.success(
+                "Database reset complete"
+            )
+
+        except Exception as e:
+
+            st.error(str(e))
