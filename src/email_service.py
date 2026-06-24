@@ -1,83 +1,208 @@
-"""
-Email notification service for World Cup Predictions.
-"""
+import os
 import smtplib
+import psycopg2
+import logging
+
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import streamlit as st
-import logging
 
 logger = logging.getLogger(__name__)
 
+
 class EmailService:
+
     def __init__(self):
-        try:
-            self.server = st.secrets["email"]["smtp_server"]
-            self.port = st.secrets["email"]["smtp_port"]
-            self.sender = st.secrets["email"]["sender_email"]
-            self.password = st.secrets["email"]["sender_password"]
-        except KeyError:
-            logger.error("Email secrets missing. Check your Streamlit Secrets.")
-            self.sender = None
 
-    def send_mass_email(self, bcc_list: list, subject: str, html_content: str) -> bool:
-        """Sends a single email with recipients hidden in BCC to save time/resources."""
-        if not self.sender or not bcc_list:
-            return False
+        self.conn = psycopg2.connect(
+            os.getenv("DATABASE_URL")
+        )
+
+        self.smtp_host = os.getenv("SMTP_HOST")
+        self.smtp_port = 587
+        self.user = os.getenv("EMAIL_USER")
+        self.password = os.getenv("EMAIL_PASSWORD")
+        self.sender = os.getenv("FROM_EMAIL")
+
+    def get_users(self):
+
+        cur = self.conn.cursor()
+
+        cur.execute("""
+            SELECT
+                user_id,
+                user_name,
+                email
+            FROM user_master
+            WHERE status='ACTIVE'
+        """)
+
+        rows = cur.fetchall()
+
+        return rows
+
+    def already_sent_today(
+        self,
+        user_id,
+        reminder_type
+    ):
+
+        cur = self.conn.cursor()
+
+        cur.execute("""
+        SELECT 1
+        FROM email_log
+
+        WHERE user_id=%s
+        AND reminder_type=%s
+        AND DATE(sent_at)=CURRENT_DATE
+        """, (
+            user_id,
+            reminder_type
+        ))
+
+        return cur.fetchone() is not None
+
+    def record_send(
+        self,
+        user_id,
+        reminder_type
+    ):
+
+        cur = self.conn.cursor()
+
+        cur.execute("""
+        INSERT INTO email_log(
+            user_id,
+            reminder_type
+        )
+        VALUES(%s,%s)
+        """, (
+            user_id,
+            reminder_type
+        ))
+
+        self.conn.commit()
+
+    def send_email(
+        self,
+        email,
+        username,
+        subject,
+        body
+    ):
 
         try:
-            msg = MIMEMultipart("alternative")
+
+            msg = MIMEMultipart()
+
+            msg["From"] = self.sender
+            msg["To"] = email
             msg["Subject"] = subject
-            msg["From"] = f"World Cup 2026 Predictions <{self.sender}>"
-            # Keep "To" empty when using BCC so users don't see each other's emails
-            
-            part = MIMEText(html_content, "html")
-            msg.attach(part)
 
-            # Connect and send
-            with smtplib.SMTP_SSL(self.server, self.port) as server:
-                server.login(self.sender, self.password)
-                # Send to the BCC list
-                server.sendmail(self.sender, bcc_list, msg.as_string())
-                
-            logger.info(f"Successfully sent mass email to {len(bcc_list)} users.")
+            msg.attach(
+                MIMEText(
+                    body,
+                    "plain"
+                )
+            )
+
+            with smtplib.SMTP(
+                self.smtp_host,
+                self.smtp_port
+            ) as server:
+
+                server.starttls()
+
+                server.login(
+                    self.user,
+                    self.password
+                )
+
+                server.send_message(msg)
+
             return True
+
         except Exception as e:
-            logger.error(f"Failed to send email: {e}")
+
+            logger.exception(e)
+
             return False
 
-    def send_leaderboard_update(self, users: list):
-        """Notifies users that results are in and the leaderboard has changed."""
-        emails = [u['email'] for u in users if u.get('email')]
-        
-        subject = "🏆 World Cup Leaderboard Updated!"
-        html = """
-        <html>
-            <body>
-                <h2 style='color:#1a472a;'>Match Results are In!</h2>
-                <p>The latest World Cup matches have finished and the scores have been calculated.</p>
-                <p>Did you move up the ranks? <b>Check the Leaderboard now to see your new global position!</b></p>
-                <br>
-                <a href='https://fifa-worldcup-polls.streamlit.app/' style='background:#e53238; color:white; padding:10px 20px; text-decoration:none; border-radius:5px;'>View Leaderboard</a>
-            </body>
-        </html>
-        """
-        return self.send_mass_email(emails, subject, html)
+    def send_daily_reminders(self):
 
-    def send_prediction_reminder(self, users: list, match_count: int):
-        """Reminds users to predict upcoming matches."""
-        emails = [u['email'] for u in users if u.get('email')]
-        
-        subject = "⏰ Lock in your World Cup Predictions!"
-        html = f"""
-        <html>
-            <body>
-                <h2 style='color:#e53238;'>Don't miss out on points!</h2>
-                <p>There are <b>{match_count} upcoming matches</b> kicking off soon.</p>
-                <p>You haven't locked in your predictions yet. Head over to the platform before kickoff to make your picks and climb the leaderboard.</p>
-                <br>
-                <a href='https://fifa-worldcup-polls.streamlit.app/' style='background:#1a472a; color:white; padding:10px 20px; text-decoration:none; border-radius:5px;'>Make Predictions</a>
-            </body>
-        </html>
-        """
-        return self.send_mass_email(emails, subject, html)
+        users = self.get_users()
+
+        sent = 0
+
+        for user in users:
+
+            uid, name, email = user
+
+            if self.already_sent_today(
+                uid,
+                "DAILY"
+            ):
+                continue
+
+            ok = self.send_email(
+                email,
+                name,
+                "⚽ FIFA World Cup Daily Reminder",
+                f"""
+Hello {name},
+
+Your predictions may still be open.
+
+Visit the platform and submit today's picks.
+
+Good luck.
+"""
+            )
+
+            if ok:
+
+                self.record_send(
+                    uid,
+                    "DAILY"
+                )
+
+                sent += 1
+
+        return sent
+
+    def send_admin_blast(self):
+
+        users = self.get_users()
+
+        sent = 0
+
+        for user in users:
+
+            uid, name, email = user
+
+            ok = self.send_email(
+                email,
+                name,
+                "🚨 Extra Reminder from Admin",
+                f"""
+Hello {name},
+
+Admin has opened an additional reminder.
+
+Don't forget to make today's prediction.
+
+Good luck.
+"""
+            )
+
+            if ok:
+
+                self.record_send(
+                    uid,
+                    "ADMIN"
+                )
+
+                sent += 1
+
+        return sent
