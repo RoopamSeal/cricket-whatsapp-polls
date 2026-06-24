@@ -26,6 +26,13 @@ class Config:
     PREDICTION_FACT_PATH = SILVER_DIR / "prediction_fact.csv"
     MATCH_RESULT_PATH = SILVER_DIR / "match_result.csv"
     POINTS_FACT_PATH = SILVER_DIR / "points_fact.csv"
+
+    # Database
+    DB_HOST = st.secrets["database"]["host"]
+    DB_PORT = st.secrets["database"]["port"]
+    DB_NAME = st.secrets["database"]["database"]
+    DB_USER = st.secrets["database"]["user"]
+    DB_PASSWORD = st.secrets["database"]["password"]
     
     # Gold files
     LEADERBOARD_PATH = GOLD_DIR / "leaderboard.csv"
