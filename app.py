@@ -5,7 +5,6 @@ import logging
 import streamlit as st
 from src.config import Config
 from src.storage import get_storage
-from src.fixtures import FixtureLoader
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,9 +22,6 @@ st.set_page_config(
 # Initialize config, storage, and fixtures (cached — single pool for entire app)
 config = Config()
 storage = get_storage()
-
-fixture_loader = FixtureLoader(config)
-fixture_loader.ensure_fixtures_loaded(storage)
 
 # Session state initialization
 if 'user_id' not in st.session_state:
@@ -344,6 +340,7 @@ else:
     user_predictions = storage.get_user_prediction_count(st.session_state.user_id)
     user_correct = storage.get_user_correct_predictions(st.session_state.user_id)
     user_points = storage.get_user_total_points(st.session_state.user_id)
+    user_resolved = storage.get_user_resolved_prediction_count(st.session_state.user_id)
 
     st.sidebar.markdown("### 📊 Your Stats")
     col1, col2 = st.sidebar.columns(2)
@@ -351,7 +348,7 @@ else:
         st.metric("🎯 Preds", user_predictions)
         st.metric("⭐ Points", user_points)
     with col2:
-        accuracy = (user_correct / user_predictions * 100) if user_predictions > 0 else 0
+        accuracy = (user_correct / user_resolved * 100) if user_resolved > 0 else 0
         st.metric("✅ Correct", user_correct)
         st.metric("📈 Acc %", f"{accuracy:.1f}%")
 

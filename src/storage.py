@@ -29,21 +29,25 @@ class Storage:
         for _, row in df.iterrows():
             match_date = str(row['match_date'])
             kickoff = str(row['kickoff_time'])
-            
-            match_data = {
-                'match_id': str(row['match_id']),
-                'team_1': str(row['team_1']),
-                'team_2': str(row['team_2']),
-                'stage': str(row['stage']),
-                'match_date': match_date,
-                'kickoff_time': kickoff,
-                'kickoff_time_ist': str(row.get('kickoff_time_ist', kickoff)),
-                'match_datetime': f"{match_date} {kickoff}",
-                'venue': str(row.get('venue', '')),
-                'status': str(row.get('status', 'scheduled'))
-            }
-            # Using ON CONFLICT logic via raw execution if you want to avoid duplicates
-            self.db.insert("matches", match_data)
+            self.db.execute(
+                """INSERT INTO matches
+                       (match_id, team_1, team_2, stage, match_date, kickoff_time,
+                        kickoff_time_ist, match_datetime, venue, status)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (match_id) DO NOTHING""",
+                (
+                    str(row['match_id']),
+                    str(row['team_1']),
+                    str(row['team_2']),
+                    str(row['stage']),
+                    match_date,
+                    kickoff,
+                    str(row.get('kickoff_time_ist', kickoff)),
+                    f"{match_date} {kickoff}",
+                    str(row.get('venue', '')),
+                    str(row.get('status', 'scheduled'))
+                )
+            )
 
     def get_all_matches(self) -> List[Dict[str, Any]]:
         return self.db.fetch_all("""

@@ -1,0 +1,38 @@
+name: Match Reminders
+
+on:
+  schedule:
+    # Runs every hour at minute 0
+    - cron: "0 * * * *"
+  workflow_dispatch:  # allow manual trigger from GitHub UI
+
+jobs:
+
+  send:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send match reminders
+        run: python scripts/send_match_reminders.py
+        env:
+          DB_HOST:     ${{ secrets.DB_HOST }}
+          DB_PORT:     ${{ secrets.DB_PORT }}
+          DB_USER:     ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME:     ${{ secrets.DB_NAME }}
+          SMTP_HOST:      ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:      ${{ secrets.SMTP_PORT }}
+          EMAIL_USER:     ${{ secrets.EMAIL_USER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          FROM_EMAIL:     ${{ secrets.FROM_EMAIL }}

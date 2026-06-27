@@ -2,13 +2,13 @@
 send_match_reminders.py
 
 FIFA World Cup 2026 Prediction Platform
-Automatic pre-match email reminders
+Automatic pre-match email reminders — runs every hour via GitHub Actions.
 
-Run:
-python jobs/send_match_reminders.py
+Sends reminders to users who haven't predicted yet for matches
+kicking off within the next REMINDER_MINUTES minutes.
 
-Schedule:
-Every 1 hour (GitHub Actions / Databricks Job / cron)
+NOTE: kickoff_time in the DB is treated as UTC. If your fixtures store
+kickoff in a local timezone, adjust KICKOFF_TZ_OFFSET_HOURS accordingly.
 """
 
 import os
@@ -29,17 +29,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-NEON_URL = os.getenv("DATABASE_URL")
+DB_HOST     = os.getenv("DB_HOST")
+DB_PORT     = int(os.getenv("DB_PORT", 5432))
+DB_USER     = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME     = os.getenv("DB_NAME")
 
 SMTP_HOST = os.getenv("SMTP_HOST")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
-EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_USER     = os.getenv("EMAIL_USER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+FROM_EMAIL     = os.getenv("FROM_EMAIL")
 
-FROM_EMAIL = os.getenv("FROM_EMAIL")
+# Send reminders for matches kicking off within the next 60 minutes
+REMINDER_MINUTES = 60
 
-REMINDER_MINUTES = 120
+# If kickoff_time in DB is in a local timezone, set the UTC offset here.
+# e.g. EDT = -4, IST = +5.5, UTC = 0
+KICKOFF_TZ_OFFSET_HOURS = 0
 
 
 # ==========================================================
@@ -50,7 +58,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-
 logger = logging.getLogger("email-reminder")
 
 
@@ -60,8 +67,13 @@ logger = logging.getLogger("email-reminder")
 
 def get_connection():
     return psycopg2.connect(
-        NEON_URL,
-        cursor_factory=RealDictCursor
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        dbname=DB_NAME,
+        sslmode="require",
+        cursor_factory=RealDictCursor,
     )
 
 
@@ -70,9 +82,12 @@ def get_connection():
 # ==========================================================
 
 def get_upcoming_matches(conn):
+    """Return scheduled matches kicking off within the reminder window."""
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    window_end = now_utc + timedelta(minutes=REMINDER_MINUTES)
 
-    current = datetime.now(timezone.utc)
-    future = current + timedelta(minutes=REMINDER_MINUTES)
+    # Shift by the stored timezone offset so comparison is in UTC
+    offset = timedelta(hours=KICKOFF_TZ_OFFSET_HOURS)
 
     query = """
     SELECT
@@ -82,16 +97,16 @@ def get_upcoming_matches(conn):
         match_date,
         kickoff_time,
         venue
-    FROM match_master
-    WHERE
-        status='UPCOMING'
-        AND (
-            match_date + kickoff_time
-        ) BETWEEN %s AND %s
+    FROM matches
+    WHERE status = 'scheduled'
+      AND (match_date::date + kickoff_time::time) - %s::interval > %s
+      AND (match_date::date + kickoff_time::time) - %s::interval <= %s
     """
 
     with conn.cursor() as cur:
-        cur.execute(query, (current, future))
+        offset_str = f"{abs(int(KICKOFF_TZ_OFFSET_HOURS))} hours"
+        # Subtract offset to convert stored local time → UTC before comparing
+        cur.execute(query, (offset_str, now_utc, offset_str, window_end))
         return cur.fetchall()
 
 
@@ -100,28 +115,22 @@ def get_upcoming_matches(conn):
 # ==========================================================
 
 def users_without_prediction(conn, match_id):
-
+    """Return active users who have not yet predicted for this match."""
     query = """
     SELECT
         u.user_id,
         u.user_name,
         u.email
-
-    FROM user_master u
-
-    WHERE u.status='ACTIVE'
-
-    AND NOT EXISTS (
-
-        SELECT 1
-        FROM prediction_fact p
-
-        WHERE
-            p.user_id=u.user_id
-            AND p.match_id=%s
-    )
+    FROM users u
+    WHERE u.email IS NOT NULL
+      AND u.email != ''
+      AND NOT EXISTS (
+          SELECT 1
+          FROM predictions p
+          WHERE p.user_id = u.user_id
+            AND p.match_id = %s
+      )
     """
-
     with conn.cursor() as cur:
         cur.execute(query, (match_id,))
         return cur.fetchall()
@@ -131,77 +140,38 @@ def users_without_prediction(conn, match_id):
 # EMAIL
 # ==========================================================
 
-def send_email(
-    recipient,
-    username,
-    team1,
-    team2,
-    kickoff
-):
+def send_email(recipient, username, team1, team2, kickoff, venue):
+    subject = f"⚽ Predict before kickoff: {team1} vs {team2}"
 
-    subject = (
-        f"⚽ Prediction closes soon: "
-        f"{team1} vs {team2}"
-    )
+    body = f"""Hello {username},
 
-    body = f"""
-Hello {username},
+Your FIFA World Cup 2026 prediction window is closing soon!
 
-Your FIFA World Cup 2026 prediction window is closing.
+Match:   {team1} vs {team2}
+Kickoff: {kickoff}
+Venue:   {venue or 'TBD'}
 
-Upcoming Match:
-{team1} vs {team2}
+Open the app and submit your prediction before kickoff — you have less than an hour!
 
-Kickoff:
-{kickoff}
-
-Open the app and submit your prediction before kickoff.
-
-Good luck.
-
-FIFA World Cup Predictor
+Good luck,
+FIFA World Cup 2026 Predictor
 """
 
     msg = MIMEMultipart()
-
-    msg["From"] = FROM_EMAIL
-    msg["To"] = recipient
+    msg["From"]    = FROM_EMAIL
+    msg["To"]      = recipient
     msg["Subject"] = subject
-
-    msg.attach(
-        MIMEText(body, "plain")
-    )
+    msg.attach(MIMEText(body, "plain"))
 
     try:
-
-        with smtplib.SMTP(
-            SMTP_HOST,
-            SMTP_PORT
-        ) as server:
-
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
-
-            server.login(
-                EMAIL_USER,
-                EMAIL_PASSWORD
-            )
-
+            server.login(EMAIL_USER, EMAIL_PASSWORD)
             server.send_message(msg)
-
-        logger.info(
-            "Email sent → %s",
-            recipient
-        )
-
+        logger.info("Email sent → %s", recipient)
         return True
-
-    except Exception as e:
-
-        logger.exception(
-            "Email failed → %s",
-            recipient
-        )
-
+    except Exception:
+        logger.exception("Email failed → %s", recipient)
         return False
 
 
@@ -210,43 +180,32 @@ FIFA World Cup Predictor
 # ==========================================================
 
 def run():
-
-    logger.info("Starting reminder job")
+    logger.info("Starting reminder job (window: %d min)", REMINDER_MINUTES)
 
     conn = get_connection()
-
     try:
-
         matches = get_upcoming_matches(conn)
 
         if not matches:
-            logger.info(
-                "No upcoming matches"
-            )
+            logger.info("No matches kicking off in the next %d minutes", REMINDER_MINUTES)
             return
 
         for match in matches:
+            match_id = match["match_id"]
+            team1    = match["team_1"]
+            team2    = match["team_2"]
+            kickoff  = f"{match['match_date']} {match['kickoff_time']}"
+            venue    = match.get("venue", "")
 
-            users = users_without_prediction(
-                conn,
-                match["match_id"]
-            )
+            users = users_without_prediction(conn, match_id)
+            logger.info("Match %s (%s vs %s): %d user(s) to notify", match_id, team1, team2, len(users))
 
-            logger.info(
-                "Match %s users=%s",
-                match["match_id"],
-                len(users)
-            )
-
+            sent = 0
             for user in users:
+                if send_email(user["email"], user["user_name"], team1, team2, kickoff, venue):
+                    sent += 1
 
-                send_email(
-                    user["email"],
-                    user["user_name"],
-                    match["team_1"],
-                    match["team_2"],
-                    match["kickoff_time"]
-                )
+            logger.info("Sent %d/%d reminders for match %s", sent, len(users), match_id)
 
     finally:
         conn.close()
