@@ -29,11 +29,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_HOST     = os.getenv("DB_HOST")
-DB_PORT     = int(os.getenv("DB_PORT", 5432))
-DB_USER     = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_NAME     = os.getenv("DB_NAME")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 SMTP_HOST = os.getenv("SMTP_HOST")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
@@ -67,12 +63,7 @@ logger = logging.getLogger("email-reminder")
 
 def get_connection():
     return psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        dbname=DB_NAME,
-        sslmode="require",
+        DATABASE_URL,
         cursor_factory=RealDictCursor,
     )
 
