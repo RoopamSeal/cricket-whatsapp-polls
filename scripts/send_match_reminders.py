@@ -6,21 +6,17 @@ Automatic pre-match email reminders — runs every hour via GitHub Actions.
 
 Sends reminders to users who haven't predicted yet for matches
 kicking off within the next REMINDER_MINUTES minutes.
-
-NOTE: kickoff_time in the DB is treated as UTC. If your fixtures store
-kickoff in a local timezone, adjust KICKOFF_TZ_OFFSET_HOURS accordingly.
 """
 
 import os
 import logging
-import smtplib
 from datetime import datetime, timedelta, timezone
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 
 # ==========================================================
@@ -29,20 +25,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL     = os.getenv("DATABASE_URL")
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+FROM_EMAIL       = os.getenv("FROM_EMAIL")
 
-SMTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-
-EMAIL_USER     = os.getenv("EMAIL_USER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-FROM_EMAIL     = os.getenv("FROM_EMAIL")
-
-# Send reminders for matches kicking off within the next 60 minutes
-REMINDER_MINUTES = 60
-
-# If kickoff_time in DB is in a local timezone, set the UTC offset here.
-# e.g. EDT = -4, IST = +5.5, UTC = 0
+REMINDER_MINUTES       = 60
 KICKOFF_TZ_OFFSET_HOURS = 0
 
 
@@ -73,30 +60,18 @@ def get_connection():
 # ==========================================================
 
 def get_upcoming_matches(conn):
-    """Return scheduled matches kicking off within the reminder window."""
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_utc    = datetime.now(timezone.utc).replace(tzinfo=None)
     window_end = now_utc + timedelta(minutes=REMINDER_MINUTES)
-
-    # Shift by the stored timezone offset so comparison is in UTC
-    offset = timedelta(hours=KICKOFF_TZ_OFFSET_HOURS)
+    offset_str = f"{abs(int(KICKOFF_TZ_OFFSET_HOURS))} hours"
 
     query = """
-    SELECT
-        match_id,
-        team_1,
-        team_2,
-        match_date,
-        kickoff_time,
-        venue
+    SELECT match_id, team_1, team_2, match_date, kickoff_time, venue
     FROM matches
     WHERE status = 'scheduled'
       AND (match_date::date + kickoff_time::time) - %s::interval > %s
       AND (match_date::date + kickoff_time::time) - %s::interval <= %s
     """
-
     with conn.cursor() as cur:
-        offset_str = f"{abs(int(KICKOFF_TZ_OFFSET_HOURS))} hours"
-        # Subtract offset to convert stored local time → UTC before comparing
         cur.execute(query, (offset_str, now_utc, offset_str, window_end))
         return cur.fetchall()
 
@@ -106,20 +81,14 @@ def get_upcoming_matches(conn):
 # ==========================================================
 
 def users_without_prediction(conn, match_id):
-    """Return active users who have not yet predicted for this match."""
     query = """
-    SELECT
-        u.user_id,
-        u.user_name,
-        u.email
+    SELECT u.user_id, u.user_name, u.email
     FROM users u
     WHERE u.email IS NOT NULL
       AND u.email != ''
       AND NOT EXISTS (
-          SELECT 1
-          FROM predictions p
-          WHERE p.user_id = u.user_id
-            AND p.match_id = %s
+          SELECT 1 FROM predictions p
+          WHERE p.user_id = u.user_id AND p.match_id = %s
       )
     """
     with conn.cursor() as cur:
@@ -148,19 +117,22 @@ Good luck,
 FIFA World Cup 2026 Predictor
 """
 
-    msg = MIMEMultipart()
-    msg["From"]    = FROM_EMAIL
-    msg["To"]      = recipient
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    message = Mail(
+        from_email=FROM_EMAIL,
+        to_emails=recipient,
+        subject=subject,
+        plain_text_content=body,
+    )
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASSWORD)
-            server.send_message(msg)
-        logger.info("Email sent → %s", recipient)
-        return True
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(message)
+        if response.status_code in (200, 202):
+            logger.info("Email sent → %s", recipient)
+            return True
+        else:
+            logger.error("SendGrid returned %s for %s", response.status_code, recipient)
+            return False
     except Exception:
         logger.exception("Email failed → %s", recipient)
         return False
