@@ -15,8 +15,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import resend
 
 
 # ==========================================================
@@ -25,9 +24,9 @@ from sendgrid.helpers.mail import Mail
 
 load_dotenv()
 
-DATABASE_URL     = os.getenv("DATABASE_URL")
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL       = os.getenv("FROM_EMAIL")
+DATABASE_URL  = os.getenv("DATABASE_URL")
+FROM_EMAIL    = os.getenv("FROM_EMAIL")
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 REMINDER_MINUTES = 60
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -119,22 +118,15 @@ Good luck,
 FIFA World Cup 2026 Predictor
 """
 
-    message = Mail(
-        from_email=FROM_EMAIL,
-        to_emails=recipient,
-        subject=subject,
-        plain_text_content=body,
-    )
-
     try:
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(message)
-        if response.status_code in (200, 202):
-            logger.info("Email sent → %s", recipient)
-            return True
-        else:
-            logger.error("SendGrid returned %s for %s", response.status_code, recipient)
-            return False
+        resend.Emails.send({
+            "from": FROM_EMAIL,
+            "to": recipient,
+            "subject": subject,
+            "text": body,
+        })
+        logger.info("Email sent → %s", recipient)
+        return True
     except Exception:
         logger.exception("Email failed → %s", recipient)
         return False
