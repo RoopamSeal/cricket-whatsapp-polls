@@ -29,8 +29,8 @@ DATABASE_URL     = os.getenv("DATABASE_URL")
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 FROM_EMAIL       = os.getenv("FROM_EMAIL")
 
-REMINDER_MINUTES       = 60
-KICKOFF_TZ_OFFSET_HOURS = 0
+REMINDER_MINUTES = 60
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 # ==========================================================
@@ -60,19 +60,20 @@ def get_connection():
 # ==========================================================
 
 def get_upcoming_matches(conn):
-    now_utc    = datetime.now(timezone.utc).replace(tzinfo=None)
-    window_end = now_utc + timedelta(minutes=REMINDER_MINUTES)
-    offset_str = f"{abs(int(KICKOFF_TZ_OFFSET_HOURS))} hours"
+    now_ist    = datetime.now(IST).replace(tzinfo=None)
+    window_end = now_ist + timedelta(minutes=REMINDER_MINUTES)
+
+    logger.info("IST now: %s | Window end: %s", now_ist.strftime("%Y-%m-%d %H:%M:%S"), window_end.strftime("%Y-%m-%d %H:%M:%S"))
 
     query = """
     SELECT match_id, team_1, team_2, match_date, kickoff_time, venue
     FROM matches
     WHERE status = 'scheduled'
-      AND (match_date::date + kickoff_time::time) - %s::interval > %s
-      AND (match_date::date + kickoff_time::time) - %s::interval <= %s
+      AND (match_date::date + kickoff_time::time) > %s
+      AND (match_date::date + kickoff_time::time) <= %s
     """
     with conn.cursor() as cur:
-        cur.execute(query, (offset_str, now_utc, offset_str, window_end))
+        cur.execute(query, (now_ist, window_end))
         return cur.fetchall()
 
 
