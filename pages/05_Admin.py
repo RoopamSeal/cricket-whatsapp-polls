@@ -73,8 +73,10 @@ with tab2:
         
         winner = st.radio("Winner", [selected_match['team_1'], selected_match['team_2'], 'draw'], horizontal=True)
         
+        actual_goals = st.number_input("Actual goals scored by winner (or each team for draw)", min_value=0, max_value=20, value=0, step=1)
+
         if st.button("💾 Save Result", use_container_width=True, type="primary"):
-            ok = storage.save_result(selected_match['match_id'], winner)
+            ok = storage.save_result(selected_match['match_id'], winner, actual_goals)
             if ok:
                 st.success(f"✅ Result saved for {selected_match['team_1']} vs {selected_match['team_2']}!")
                 st.rerun()
