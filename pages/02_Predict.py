@@ -112,11 +112,20 @@ try:
                 st.success(f"✅ {pred['predicted_winner']}")
 
         if not pred:
+            goals = st.number_input(
+                "Predicted goals for selected team (or each team for draw)",
+                min_value=0,
+                max_value=20,
+                value=0,
+                step=1,
+                key=f"goals_{match['match_id']}"
+            )
+
             c1, c2, c3 = st.columns(3)
             with c1:
                 if st.button(f"🎯 {match['team_1']}", key=f"p_{match['match_id']}_1", use_container_width=True):
                     ok, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id, match['match_id'], match['team_1']
+                        st.session_state.user_id, match['match_id'], match['team_1'], goals
                     )
                     if ok:
                         st.success("✅ Prediction saved!")
@@ -127,7 +136,7 @@ try:
             with c2:
                 if st.button("🤝 DRAW", key=f"p_{match['match_id']}_draw", use_container_width=True):
                     ok, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id, match['match_id'], 'draw'
+                        st.session_state.user_id, match['match_id'], 'draw', goals
                     )
                     if ok:
                         st.success("✅ Prediction saved!")
@@ -138,7 +147,7 @@ try:
             with c3:
                 if st.button(f"🎯 {match['team_2']}", key=f"p_{match['match_id']}_2", use_container_width=True):
                     ok, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id, match['match_id'], match['team_2']
+                        st.session_state.user_id, match['match_id'], match['team_2'], goals
                     )
                     if ok:
                         st.success("✅ Prediction saved!")

@@ -101,6 +101,10 @@ class DatabaseSchema:
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status)")
                     cursor.execute("CREATE INDEX IF NOT EXISTS idx_predictions_user ON predictions(user_id)")
                     
+                    # ============ ALTER TABLES FOR GOALS ============
+                    cursor.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS predicted_goals INTEGER DEFAULT -1")
+                    cursor.execute("ALTER TABLE match_results ADD COLUMN IF NOT EXISTS actual_goals INTEGER DEFAULT -1")
+
                 conn.commit()
                 logger.info("✅ PostgreSQL database schema initialized successfully!")
                 return True

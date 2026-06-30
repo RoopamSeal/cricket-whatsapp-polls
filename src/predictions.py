@@ -33,7 +33,7 @@ class PredictionManager:
             logger.error(f"Error: {e}")
             return True, ""
     
-    def make_prediction(self, user_id: str, match_id: str, predicted_winner: str) -> tuple:
+    def make_prediction(self, user_id: str, match_id: str, predicted_winner: str, predicted_goals: int = 0) -> tuple:
         """Make a prediction."""
         try:
             # Validate
@@ -59,7 +59,8 @@ class PredictionManager:
                     user_id,
                     match_id,
                     predicted_winner,
-                    datetime.now(timezone.utc).isoformat()
+                    datetime.now(timezone.utc).isoformat(),
+                    predicted_goals
                 )
 
                 if inserted:

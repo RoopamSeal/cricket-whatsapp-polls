@@ -27,12 +27,14 @@ class Config:
     MATCH_RESULT_PATH = SILVER_DIR / "match_result.csv"
     POINTS_FACT_PATH = SILVER_DIR / "points_fact.csv"
 
+    import streamlit as st
+
     # Database
-    DB_HOST = st.secrets["database"]["host"]
-    DB_PORT = st.secrets["database"]["port"]
-    DB_NAME = st.secrets["database"]["database"]
-    DB_USER = st.secrets["database"]["user"]
-    DB_PASSWORD = st.secrets["database"]["password"]
+    DB_HOST = st.secrets["database"]["host"] if "database" in st.secrets else ""
+    DB_PORT = st.secrets["database"]["port"] if "database" in st.secrets else ""
+    DB_NAME = st.secrets["database"]["database"] if "database" in st.secrets else ""
+    DB_USER = st.secrets["database"]["user"] if "database" in st.secrets else ""
+    DB_PASSWORD = st.secrets["database"]["password"] if "database" in st.secrets else ""
     
     # Gold files
     LEADERBOARD_PATH = GOLD_DIR / "leaderboard.csv"

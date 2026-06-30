@@ -110,7 +110,7 @@ class Storage:
         return self.db.fetch_one("SELECT * FROM users WHERE email = %s", (email,))
 
     # ============ PREDICTION METHODS ============
-    def create_prediction(self, prediction_id: str, user_id: str, match_id: str, predicted_winner: str, timestamp: str = None) -> bool:
+    def create_prediction(self, prediction_id: str, user_id: str, match_id: str, predicted_winner: str, timestamp: str = None, predicted_goals: int = 0) -> bool:
         """Insert a prediction row; raises on DB error so callers can surface it."""
         pred_id = prediction_id or str(uuid.uuid4())
         ts = timestamp or datetime.datetime.now().isoformat()
@@ -119,10 +119,10 @@ class Storage:
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO predictions
-                           (prediction_id, user_id, match_id, predicted_winner, prediction_timestamp)
-                       VALUES (%s, %s, %s, %s, %s)
+                           (prediction_id, user_id, match_id, predicted_winner, prediction_timestamp, predicted_goals)
+                       VALUES (%s, %s, %s, %s, %s, %s)
                        ON CONFLICT (match_id, user_id) DO NOTHING""",
-                    (pred_id, user_id, match_id, predicted_winner, ts)
+                    (pred_id, user_id, match_id, predicted_winner, ts, predicted_goals)
                 )
                 inserted = cur.rowcount > 0
             conn.commit()
@@ -160,6 +160,7 @@ class Storage:
         query = """
         SELECT SUM(
             CASE 
+                WHEN p.predicted_winner = r.actual_winner AND p.predicted_goals = r.actual_goals THEN 5
                 WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
                 WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
                 ELSE 0
@@ -200,22 +201,24 @@ class Storage:
         return self.db.count(table)
 
     # ============ RESULTS & API SYNC ============
-    def save_result(self, match_id: str, actual_winner: str) -> bool:
+    def save_result(self, match_id: str, actual_winner: str, actual_goals: int = 0) -> bool:
         """Safely saves results using the correct match_result_id column."""
         try:
             # Using raw SQL to handle the ON CONFLICT safely with the correct schema
             query = """
-            INSERT INTO match_results (match_result_id, match_id, actual_winner, result_timestamp)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO match_results (match_result_id, match_id, actual_winner, result_timestamp, actual_goals)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (match_id) DO UPDATE SET 
                 actual_winner = EXCLUDED.actual_winner,
-                result_timestamp = EXCLUDED.result_timestamp
+                result_timestamp = EXCLUDED.result_timestamp,
+                actual_goals = EXCLUDED.actual_goals
             """
             success = self.db.execute(query, (
                 str(uuid.uuid4()), 
                 match_id, 
                 actual_winner, 
-                datetime.datetime.now().isoformat()
+                datetime.datetime.now().isoformat(),
+                actual_goals
             ))
             
             if success:
@@ -282,8 +285,12 @@ class Storage:
                     elif api_winner == 'AWAY_TEAM':
                         actual_winner = db_team1 if db_team1.lower().startswith(away[:4].lower()) else db_team2
                     
-                    if self.save_result(db_match['match_id'], actual_winner):
-                        print(f"  -> 💾 SAVED TO NEON: Winner is {actual_winner}")
+                    # TODO: Implement accurate parsing logic once API payload structure can be verified.
+                    # Currently setting a safe placeholder `actual_goals = -1` to prevent false matches with default 0.
+                    actual_goals = -1
+
+                    if self.save_result(db_match['match_id'], actual_winner, actual_goals):
+                        print(f"  -> 💾 SAVED TO NEON: Winner is {actual_winner} with {actual_goals} goals")
                         updated += 1
                     else:
                         print("  -> ❌ FAILED TO SAVE TO NEON (Check your save_result SQL syntax)")
@@ -314,6 +321,7 @@ class Storage:
                 COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) AS correct_predictions,
                 COALESCE(SUM(
                     CASE
+                        WHEN p.predicted_winner = r.actual_winner AND p.predicted_goals = r.actual_goals THEN 5
                         WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
                         WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
                         ELSE 0
@@ -353,6 +361,7 @@ class Storage:
                     COALESCE(SUM(CASE WHEN p.predicted_winner = r.actual_winner THEN 1 ELSE 0 END), 0) AS correct_predictions,
                     COALESCE(SUM(
                         CASE
+                            WHEN p.predicted_winner = r.actual_winner AND p.predicted_goals = r.actual_goals THEN 5
                             WHEN p.predicted_winner = r.actual_winner AND r.actual_winner != 'draw' THEN 3
                             WHEN p.predicted_winner = r.actual_winner AND r.actual_winner = 'draw' THEN 2
                             ELSE 0
