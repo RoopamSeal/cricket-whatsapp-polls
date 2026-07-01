@@ -27,15 +27,10 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="Predict", layout="wide")
 
-if 'user_id' not in st.session_state:
-    st.session_state.user_id = None
-if 'user_name' not in st.session_state:
-    st.session_state.user_name = None
-
 st.markdown("""
 <h1 style="text-align: center;">🎯 MAKE YOUR PREDICTIONS</h1>
 <p style="text-align: center; color: #e53238; font-size: 1rem;">
-    Predict today's matches before kickoff and earn points!
+    Predict the EXACT score for today's matches before kickoff to earn +5 points!
 </p>
 """, unsafe_allow_html=True)
 
@@ -101,51 +96,69 @@ try:
 
         pred = storage.get_prediction(match['match_id'], st.session_state.user_id)
 
-        col_a, col_b = st.columns([3, 1])
-        with col_a:
-            st.markdown(
-                f"**{match['team_1']}** vs **{match['team_2']}**  \n"
-                f"🕐 {kickoff_display} &nbsp;|&nbsp; {match['stage']}"
-            )
-        with col_b:
-            if pred:
-                st.success(f"✅ {pred['predicted_winner']}")
+        st.markdown(
+            f"<div style='text-align:center; color:#666; margin-bottom:1rem;'>"
+            f"🕐 {kickoff_display} &nbsp;|&nbsp; {match['stage']}</div>", 
+            unsafe_allow_html=True
+        )
 
-        if not pred:
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                if st.button(f"🎯 {match['team_1']}", key=f"p_{match['match_id']}_1", use_container_width=True):
-                    ok, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id, match['match_id'], match['team_1']
-                    )
-                    if ok:
-                        st.success("✅ Prediction saved!")
-                        st.balloons()
-                        st.rerun()
-                    else:
-                        st.error(f"Error: {msg}")
-            with c2:
-                if st.button("🤝 DRAW", key=f"p_{match['match_id']}_draw", use_container_width=True):
-                    ok, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id, match['match_id'], 'draw'
-                    )
-                    if ok:
-                        st.success("✅ Prediction saved!")
-                        st.balloons()
-                        st.rerun()
-                    else:
-                        st.error(f"Error: {msg}")
-            with c3:
-                if st.button(f"🎯 {match['team_2']}", key=f"p_{match['match_id']}_2", use_container_width=True):
-                    ok, msg, _ = pred_manager.make_prediction(
-                        st.session_state.user_id, match['match_id'], match['team_2']
-                    )
-                    if ok:
-                        st.success("✅ Prediction saved!")
-                        st.balloons()
-                        st.rerun()
-                    else:
-                        st.error(f"Error: {msg}")
+        if pred:
+            s1 = pred.get('predicted_score_1')
+            s2 = pred.get('predicted_score_2')
+            score_display = f"({s1} - {s2})" if s1 is not None and s2 is not None else ""
+            
+            st.success(f"✅ Your prediction: **{pred['predicted_winner']}** {score_display}")
+            st.markdown("---")
+            continue
+
+        # Score Input UI
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 2, 3])
+        
+        with col1:
+            st.markdown(f"<h4 style='text-align:right; color:#1a472a; margin-top:2rem;'>{match['team_1']}</h4>", unsafe_allow_html=True)
+            
+        with col2:
+            score_1 = st.number_input("Score", min_value=0, max_value=20, value=0, key=f"s1_{match['match_id']}", label_visibility="collapsed")
+            
+        with col3:
+            st.markdown("<h4 style='text-align:center; color:#ffb81c; margin-top:0.5rem;'>vs</h4>", unsafe_allow_html=True)
+            
+        with col4:
+            score_2 = st.number_input("Score", min_value=0, max_value=20, value=0, key=f"s2_{match['match_id']}", label_visibility="collapsed")
+            
+        with col5:
+            st.markdown(f"<h4 style='text-align:left; color:#1a472a; margin-top:2rem;'>{match['team_2']}</h4>", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Single Lock-in Button
+        _, btn_col, _ = st.columns([1, 2, 1])
+        with btn_col:
+            if st.button("🔒 Lock In Prediction", key=f"btn_{match['match_id']}", width="stretch", type="primary"):
+                
+                # Automatically calculate the winner based on the inputted scores
+                if score_1 > score_2:
+                    winner = match['team_1']
+                elif score_1 < score_2:
+                    winner = match['team_2']
+                else:
+                    winner = 'draw'
+
+                # Pass the scores to the backend
+                ok, msg, _ = pred_manager.make_prediction(
+                    st.session_state.user_id, 
+                    match['match_id'], 
+                    winner, 
+                    score_1, 
+                    score_2
+                )
+                
+                if ok:
+                    st.success(f"✅ Prediction locked! {winner} ({score_1} - {score_2})")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error(f"Error: {msg}")
 
         st.markdown("---")
 
